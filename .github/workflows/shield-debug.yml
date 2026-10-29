@@ -26,7 +26,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Build debug APK
         working-directory: Lumera
         run: bash ./gradlew :app:assembleDebug --no-daemon
