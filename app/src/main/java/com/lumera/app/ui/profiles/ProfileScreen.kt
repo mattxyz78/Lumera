@@ -132,13 +132,13 @@ fun WelcomeView(onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "WELCOME TO LUMERA",
+            "WELCOME TO CINEVO",
             style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
-            color = Color.White
+            color = Color(0xFFB7A3FF)
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            "Your cinematic universe awaits.",
+            "Your cinema. Your way.",
             style = MaterialTheme.typography.titleMedium,
             color = Color.Gray
         )
