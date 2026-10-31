@@ -1,7 +1,10 @@
-name: Shield debug build (manual only)
+name: Cinevo / Shield debug build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - development/cinevo-branding
 
 permissions:
   contents: read
@@ -33,6 +36,6 @@ jobs:
       - name: Save debug APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lumera-shield-debug
+          name: cinevo-shield-debug
           path: Lumera/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
