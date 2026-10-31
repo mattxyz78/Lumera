@@ -27,7 +27,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.lumera.app"
+        applicationId = "com.cinevo.tv"
         minSdk = 26
         targetSdk = 34
         versionCode = 9
@@ -60,7 +60,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".test"
-            resValue("string", "app_name", "Lumera Test")
+            resValue("string", "app_name", "Cinevo Test")
         }
         release {
             isMinifyEnabled = true
