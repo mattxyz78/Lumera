@@ -43,7 +43,16 @@ jobs:
             echo "::error::Cinevo signing secrets are missing. Refusing to publish another incompatible debug APK."
             exit 1
           fi
-          printf '%s' "$CINEVO_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cinevo-test-signing.jks"
+          # Accept wrapped Base64 and accidental NAME= prefix without logging the secret.
+          clean_value="$(printf '%s' "$CINEVO_KEYSTORE_BASE64" | sed 's/^CINEVO_KEYSTORE_BASE64=//' | tr -d '[:space:]')"
+          if ! printf '%s' "$clean_value" | base64 --decode > "$RUNNER_TEMP/cinevo-test-signing.jks"; then
+            echo "::error::Signing key Base64 is incomplete or malformed. Recopy the complete value from the private backup."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/cinevo-test-signing.jks" -storepass "$CINEVO_KEYSTORE_PASSWORD" -alias "$CINEVO_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::Signing keystore or its password/alias is invalid. Check the four secrets against the private backup."
+            exit 1
+          fi
           echo "CINEVO_KEYSTORE_PATH=$RUNNER_TEMP/cinevo-test-signing.jks" >> "$GITHUB_ENV"
       - name: Build debug APK
         working-directory: Lumera
