@@ -146,6 +146,18 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    fun initializeProfileWithServicesOnly(targetProfileId: Int, sourceProfileId: Int, onComplete: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            _isInitializingProfile.value = true
+            try {
+                profileConfigurationManager.initializeWithServicesOnly(targetProfileId, sourceProfileId)
+                onComplete()
+            } finally {
+                _isInitializingProfile.value = false
+            }
+        }
+    }
+
     fun deleteProfile(id: Int) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.deleteProfile(id)
