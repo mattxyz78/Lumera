@@ -1,5 +1,6 @@
 name: Cinevo / Shield debug build
 # Rebuild with persistent Cinevo signing secrets
+# Retry after correcting keystore Base64 secret
 
 on:
   workflow_dispatch:
