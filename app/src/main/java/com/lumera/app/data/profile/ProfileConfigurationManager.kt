@@ -123,6 +123,38 @@ class ProfileConfigurationManager @Inject constructor(
         clearPendingSetup(targetProfileId)
     }
 
+    /**
+     * Copy service connections and catalog availability without inheriting the
+     * source profile's personal hub rows, watch progress or dashboard layout.
+     * Existing profile snapshots remain independent until shared-service
+     * synchronization is implemented separately.
+     */
+    suspend fun initializeWithServicesOnly(targetProfileId: Int, sourceProfileId: Int) {
+        captureStartupRuntimeIfNeeded()
+        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot().also {
+            writeSnapshot(sourceProfileId, it)
+            stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
+        }
+        writeSnapshot(
+            targetProfileId,
+            ProfileRuntimeSnapshot(
+                addons = sourceSnapshot.addons,
+                catalogConfigs = sourceSnapshot.catalogConfigs.map { config ->
+                    config.copy(
+                        showInHome = true,
+                        showInMovies = config.catalogType == "movie",
+                        showInSeries = config.catalogType == "series"
+                    )
+                },
+                hubRows = emptyList(),
+                hubRowItems = emptyList(),
+                watchHistory = emptyList()
+            )
+        )
+        stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
+        clearPendingSetup(targetProfileId)
+    }
+
     fun deleteProfileState(profileId: Int) {
         clearPendingSetup(profileId)
         snapshotFile(profileId).delete()
