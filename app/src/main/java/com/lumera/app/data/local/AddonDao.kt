@@ -276,23 +276,9 @@ interface AddonDao {
         if (hubRows.isNotEmpty()) insertHubRows(hubRows)
         if (hubRowItems.isNotEmpty()) insertHubRowItems(hubRowItems)
 
-        // Merge watch history: keep whichever entry is newer (DB or snapshot).
-        // Prevents a stale snapshot from overwriting progress saved during playback
-        // (e.g., power failure before onStop snapshot could be written).
-        val existing = getAllWatchHistoryOnce().associateBy { it.id }
-        val snapshotMap = watchHistory.associateBy { it.id }
-        val allIds = existing.keys + snapshotMap.keys
-        val merged = allIds.mapNotNull { id ->
-            val db = existing[id]
-            val snap = snapshotMap[id]
-            when {
-                db == null -> snap
-                snap == null -> db
-                snap.lastWatched >= db.lastWatched -> snap
-                else -> db
-            }
-        }
+        // History belongs to the selected profile snapshot. Never merge the
+        // outgoing profile's live DB rows into the incoming profile.
         clearWatchHistory()
-        if (merged.isNotEmpty()) upsertHistoryItems(merged)
+        if (watchHistory.isNotEmpty()) upsertHistoryItems(watchHistory)
     }
 }
