@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 @HiltViewModel
@@ -31,6 +33,7 @@ class MainViewModel @Inject constructor(
     private var profileJob: Job? = null
     private var traktSyncJob: Job? = null
     private var activeProfileId: Int? = null
+    private val profileTransitionMutex = Mutex()
 
     companion object {
         private const val TRAKT_POLL_INTERVAL_MS = 30_000L // 30 seconds
@@ -39,6 +42,7 @@ class MainViewModel @Inject constructor(
     // Call this when user clicks a profile
     fun login(id: Int) {
         viewModelScope.launch {
+            profileTransitionMutex.withLock {
             profileConfigurationManager.captureStartupRuntimeIfNeeded()
 
             val previousProfileId = activeProfileId
@@ -71,6 +75,7 @@ class MainViewModel @Inject constructor(
                     }
                 }
             }
+            }
         }
     }
 
@@ -95,12 +100,14 @@ class MainViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
+            profileTransitionMutex.withLock {
             activeProfileId?.let { profileConfigurationManager.saveRuntimeState(it) }
             profileConfigurationManager.clearLastActiveProfileId()
             activeProfileId = null
             profileJob?.cancel()
             traktSyncJob?.cancel()
             _activeProfile.value = null
+            }
         }
     }
 
