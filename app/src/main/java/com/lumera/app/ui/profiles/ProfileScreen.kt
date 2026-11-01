@@ -168,6 +168,7 @@ fun ProfileSelectorView(
     var setupTargetProfile by remember { mutableStateOf<ProfileEntity?>(null) }
     var showSetupChoiceDialog by remember { mutableStateOf(false) }
     var showCopyFromDialog by remember { mutableStateOf(false) }
+    var copyServicesOnly by remember { mutableStateOf(true) }
     var showScratchConfirmDialog by remember { mutableStateOf(false) }
     val isInitializingProfile by viewModel.isInitializingProfile.collectAsState()
 
@@ -254,7 +255,13 @@ fun ProfileSelectorView(
             profileName = setupTarget.name,
             canCopy = sourceProfiles.isNotEmpty(),
             isLoading = isInitializingProfile,
-            onCopy = {
+            onCopyServices = {
+                copyServicesOnly = true
+                showSetupChoiceDialog = false
+                showCopyFromDialog = true
+            },
+            onCopyAll = {
+                copyServicesOnly = false
                 showSetupChoiceDialog = false
                 showCopyFromDialog = true
             },
@@ -276,7 +283,8 @@ fun ProfileSelectorView(
             sourceProfiles = sourceProfiles,
             isLoading = isInitializingProfile,
             onSelectProfile = { sourceProfile ->
-                viewModel.initializeProfileByCopy(setupTarget.id, sourceProfile.id) {
+                val initialize = if (copyServicesOnly) viewModel::initializeProfileWithServicesOnly else viewModel::initializeProfileByCopy
+                initialize(setupTarget.id, sourceProfile.id) {
                     showCopyFromDialog = false
                     setupTargetProfile = null
                     onSelect(setupTarget)
@@ -321,7 +329,8 @@ private fun ProfileInitialSetupDialog(
     profileName: String,
     canCopy: Boolean,
     isLoading: Boolean,
-    onCopy: () -> Unit,
+    onCopyServices: () -> Unit,
+    onCopyAll: () -> Unit,
     onStartScratch: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -349,10 +358,17 @@ private fun ProfileInitialSetupDialog(
                 Spacer(Modifier.height(24.dp))
 
                 VoidButton(
-                    text = if (canCopy) "Copy From Another Profile" else "No Profile Available To Copy",
-                    onClick = onCopy,
+                    text = if (canCopy) "Copy Services Only (Recommended)" else "No Profile Available To Copy",
+                    onClick = onCopyServices,
                     enabled = canCopy && !isLoading,
                     isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                VoidButton(
+                    text = "Copy Profile Layout and Services",
+                    onClick = onCopyAll,
+                    enabled = canCopy && !isLoading,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
