@@ -10,6 +10,8 @@ import com.lumera.app.data.model.CatalogConfigEntity
 import com.lumera.app.data.model.HubRowEntity
 import com.lumera.app.data.model.HubRowItemEntity
 import com.lumera.app.data.model.WatchHistoryEntity
+import com.lumera.app.data.model.WatchlistEntity
+import com.lumera.app.data.model.SeriesNextUpEntity
 import com.lumera.app.data.model.stremio.CatalogManifest
 import com.lumera.app.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,7 +25,9 @@ data class ProfileRuntimeSnapshot(
     val catalogConfigs: List<CatalogConfigEntity> = emptyList(),
     val hubRows: List<HubRowEntity> = emptyList(),
     val hubRowItems: List<HubRowItemEntity> = emptyList(),
-    val watchHistory: List<WatchHistoryEntity> = emptyList()
+    val watchHistory: List<WatchHistoryEntity> = emptyList(),
+    val watchlist: List<WatchlistEntity> = emptyList(),
+    val seriesNextUp: List<SeriesNextUpEntity> = emptyList()
 )
 
 @Singleton
@@ -99,7 +103,9 @@ class ProfileConfigurationManager @Inject constructor(
             catalogConfigs = snapshot.catalogConfigs,
             hubRows = snapshot.hubRows,
             hubRowItems = snapshot.hubRowItems,
-            watchHistory = snapshot.watchHistory
+            watchHistory = snapshot.watchHistory,
+            watchlist = snapshot.watchlist,
+            seriesNextUp = snapshot.seriesNextUp
         )
         stremioAuthManager.loadCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
@@ -117,7 +123,7 @@ class ProfileConfigurationManager @Inject constructor(
             writeSnapshot(sourceProfileId, it)
             stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
         }
-        writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
+        writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList(), watchlist = emptyList(), seriesNextUp = emptyList()))
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
         clearPendingSetup(targetProfileId)
@@ -148,7 +154,9 @@ class ProfileConfigurationManager @Inject constructor(
                 },
                 hubRows = emptyList(),
                 hubRowItems = emptyList(),
-                watchHistory = emptyList()
+                watchHistory = emptyList(),
+                watchlist = emptyList(),
+                seriesNextUp = emptyList()
             )
         )
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
@@ -196,7 +204,9 @@ class ProfileConfigurationManager @Inject constructor(
             catalogConfigs = dao.getAllCatalogConfigs().firstOrNull() ?: emptyList(),
             hubRows = dao.getAllHubRows().firstOrNull() ?: emptyList(),
             hubRowItems = dao.getAllHubRowItems().firstOrNull() ?: emptyList(),
-            watchHistory = dao.getWatchHistory().firstOrNull() ?: emptyList()
+            watchHistory = dao.getWatchHistory().firstOrNull() ?: emptyList(),
+            watchlist = dao.getWatchlistOnce(),
+            seriesNextUp = dao.getAllSeriesNextUpOnce()
         )
     }
 
