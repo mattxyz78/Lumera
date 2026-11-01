@@ -90,11 +90,15 @@ class ProfileConfigurationManager @Inject constructor(
 
     suspend fun loadRuntimeState(profileId: Int) {
         val existingSnapshot = readSnapshot(profileId)
+        // A missing snapshot must never inherit another profile's personal data.
+        // Retain shared service/catalog configuration for legacy profiles only.
         val snapshot = existingSnapshot ?: if (!needsInitialSetup(profileId)) {
-            captureRuntimeSnapshot().also {
-                writeSnapshot(profileId, it)
-                stremioAuthManager.saveCredentialsForProfile(profileId)
-            }
+            val current = captureRuntimeSnapshot()
+            current.copy(
+                watchHistory = emptyList(),
+                watchlist = emptyList(),
+                seriesNextUp = emptyList()
+            ).also { writeSnapshot(profileId, it) }
         } else {
             ProfileRuntimeSnapshot()
         }
