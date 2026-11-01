@@ -30,8 +30,25 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+      - name: Configure persistent Cinevo signing
+        env:
+          CINEVO_KEYSTORE_BASE64: ${{ secrets.CINEVO_KEYSTORE_BASE64 }}
+          CINEVO_KEYSTORE_PASSWORD: ${{ secrets.CINEVO_KEYSTORE_PASSWORD }}
+          CINEVO_KEY_ALIAS: ${{ secrets.CINEVO_KEY_ALIAS }}
+          CINEVO_KEY_PASSWORD: ${{ secrets.CINEVO_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$CINEVO_KEYSTORE_BASE64" || -z "$CINEVO_KEYSTORE_PASSWORD" || -z "$CINEVO_KEY_ALIAS" || -z "$CINEVO_KEY_PASSWORD" ]]; then
+            echo "::error::Cinevo signing secrets are missing. Refusing to publish another incompatible debug APK."
+            exit 1
+          fi
+          printf '%s' "$CINEVO_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cinevo-test-signing.jks"
+          echo "CINEVO_KEYSTORE_PATH=$RUNNER_TEMP/cinevo-test-signing.jks" >> "$GITHUB_ENV"
       - name: Build debug APK
         working-directory: Lumera
+        env:
+          CINEVO_KEYSTORE_PASSWORD: ${{ secrets.CINEVO_KEYSTORE_PASSWORD }}
+          CINEVO_KEY_ALIAS: ${{ secrets.CINEVO_KEY_ALIAS }}
+          CINEVO_KEY_PASSWORD: ${{ secrets.CINEVO_KEY_PASSWORD }}
         run: bash ./gradlew :app:assembleDebug --no-daemon
       - name: Save debug APK as workflow artifact
         uses: actions/upload-artifact@v4
