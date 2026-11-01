@@ -236,6 +236,15 @@ interface AddonDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSeriesNextUp(entry: SeriesNextUpEntity)
 
+    @Query("SELECT * FROM series_next_up")
+    suspend fun getAllSeriesNextUpOnce(): List<SeriesNextUpEntity>
+
+    @Query("DELETE FROM series_next_up")
+    suspend fun clearSeriesNextUp()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSeriesNextUpItems(items: List<SeriesNextUpEntity>)
+
     @Query("SELECT * FROM series_next_up WHERE isComplete = 0 ORDER BY updatedAt DESC")
     fun getActiveSeriesNextUp(): Flow<List<SeriesNextUpEntity>>
 
@@ -254,6 +263,12 @@ interface AddonDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addToWatchlist(item: WatchlistEntity)
 
+    @Query("DELETE FROM watchlist")
+    suspend fun clearWatchlist()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertWatchlistItems(items: List<WatchlistEntity>)
+
     @Query("DELETE FROM watchlist WHERE id = :id")
     suspend fun removeFromWatchlist(id: String)
 
@@ -263,7 +278,9 @@ interface AddonDao {
         catalogConfigs: List<CatalogConfigEntity>,
         hubRows: List<HubRowEntity>,
         hubRowItems: List<HubRowItemEntity>,
-        watchHistory: List<WatchHistoryEntity>
+        watchHistory: List<WatchHistoryEntity>,
+        watchlist: List<WatchlistEntity>,
+        seriesNextUp: List<SeriesNextUpEntity>
     ) {
         // Replace addon/catalog/hub state from snapshot
         clearHubRowItems()
@@ -280,5 +297,9 @@ interface AddonDao {
         // outgoing profile's live DB rows into the incoming profile.
         clearWatchHistory()
         if (watchHistory.isNotEmpty()) upsertHistoryItems(watchHistory)
+        clearWatchlist()
+        if (watchlist.isNotEmpty()) upsertWatchlistItems(watchlist)
+        clearSeriesNextUp()
+        if (seriesNextUp.isNotEmpty()) upsertSeriesNextUpItems(seriesNextUp)
     }
 }
