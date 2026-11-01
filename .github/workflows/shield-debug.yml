@@ -1,4 +1,5 @@
 name: Cinevo / Shield debug build
+# Rebuild with persistent Cinevo signing secrets
 
 on:
   workflow_dispatch:
