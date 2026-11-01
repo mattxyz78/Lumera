@@ -57,8 +57,20 @@ android {
         }
     }
 
+    // Persistent test signing credentials come from CI secrets, not source control.
+    signingConfigs {
+        create("cinevoTest") {
+            storeFile = file(System.getenv("CINEVO_KEYSTORE_PATH") ?: "cinevo-signing-not-configured.jks")
+            storePassword = System.getenv("CINEVO_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("CINEVO_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("CINEVO_KEY_PASSWORD") ?: ""
+        }
+    }
     buildTypes {
         debug {
+            if (!System.getenv("CINEVO_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("cinevoTest")
+            }
             applicationIdSuffix = ".test"
             resValue("string", "app_name", "Cinevo Test")
         }
