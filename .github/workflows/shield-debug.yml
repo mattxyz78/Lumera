@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - development/cinevo-branding
+      - fix/cinevo-profile-isolation-v0.2.1
 
 permissions:
   contents: read
