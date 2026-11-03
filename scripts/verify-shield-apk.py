@@ -31,6 +31,11 @@ def main():
         [str(tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
     certificates = re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]+)", signature)
     if [c.lower() for c in certificates] != [EXPECTED_CERT]:
+        # Certificate fingerprints are public APK metadata, never private keys.
+        print(json.dumps({"expectedCertificateSha256": EXPECTED_CERT,
+                          "actualCertificateSha256": certificates}))
+        if not certificates:
+            print(signature)
         raise SystemExit("Signing identity differs from Cinevo Test 0.2.1")
     destination = Path("app/build/cinevo")
     destination.mkdir(parents=True, exist_ok=True)
