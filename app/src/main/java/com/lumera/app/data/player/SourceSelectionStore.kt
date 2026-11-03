@@ -4,17 +4,19 @@ import android.content.Context
 import com.lumera.app.data.model.stremio.Stream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Locale
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SourceSelectionStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val coordinator: ProfileRuntimeCoordinator
 ) {
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
-    fun rememberSelection(playbackId: String, stream: Stream) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+    fun rememberSelection(playbackId: String, stream: Stream, profileId: Int? = coordinator.session?.profileId) {
+        val scopedId = canonicalSourceScopeId(playbackId, profileId) ?: return
         val streamFingerprint = streamFingerprint(stream) ?: return
         val addonTag = addonTag(stream)
 
@@ -28,8 +30,8 @@ class SourceSelectionStore @Inject constructor(
         }.apply()
     }
 
-    fun clearSelection(playbackId: String) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+    fun clearSelection(playbackId: String, profileId: Int? = coordinator.session?.profileId) {
+        val scopedId = canonicalSourceScopeId(playbackId, profileId) ?: return
         prefs.edit()
             .remove(streamKey(scopedId))
             .remove(addonPrefKey(scopedId))
@@ -37,10 +39,11 @@ class SourceSelectionStore @Inject constructor(
     }
 
     fun clearSelectionsForPrefix(prefix: String) {
+        val scopedPrefix = canonicalSourceScopeId(prefix) ?: return
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
-            if (key.startsWith("${KEY_STREAM_PREFIX}$prefix") ||
-                key.startsWith("${KEY_ADDON_PREFIX}$prefix")
+            if (key.startsWith("${KEY_STREAM_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }
@@ -48,19 +51,19 @@ class SourceSelectionStore @Inject constructor(
         editor.apply()
     }
 
-    fun hasRememberedSelection(playbackId: String): Boolean {
-        val scopedId = canonicalSourceScopeId(playbackId)
+    fun hasRememberedSelection(playbackId: String, profileId: Int? = coordinator.session?.profileId): Boolean {
+        val scopedId = canonicalSourceScopeId(playbackId, profileId) ?: return false
         return !prefs.getString(streamKey(scopedId), null).isNullOrBlank()
             || !prefs.getString(addonPrefKey(scopedId), null).isNullOrBlank()
     }
 
-    fun findPreferredStream(playbackId: String, streams: List<Stream>): Stream? {
+    fun findPreferredStream(playbackId: String, streams: List<Stream>, profileId: Int? = coordinator.session?.profileId): Stream? {
         if (streams.isEmpty()) return null
 
         val playableStreams = streams.filter(::isPlayableStream)
         if (playableStreams.isEmpty()) return null
 
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId, profileId) ?: return null
         val savedFingerprint = prefs.getString(streamKey(scopedId), null)
         val savedAddon = prefs.getString(addonPrefKey(scopedId), null)
 
@@ -113,8 +116,17 @@ class SourceSelectionStore @Inject constructor(
         return normalize(sourceName.substringAfter("[").substringBefore("]"))
     }
 
-    private fun canonicalSourceScopeId(playbackId: String): String {
-        return playbackId.trim()
+    private fun canonicalSourceScopeId(playbackId: String, profileId: Int? = coordinator.session?.profileId): String? {
+        val id = playbackId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return profileId?.let { "profile:$it:$id" }
+    }
+
+    fun clearProfile(profileId: Int) {
+        val prefixes = listOf(KEY_STREAM_PREFIX, KEY_ADDON_PREFIX)
+        prefs.edit().apply {
+            prefs.all.keys.filter { key -> prefixes.any { key.startsWith("${it}profile:$profileId:") } }
+                .forEach { remove(it) }
+        }.apply()
     }
 
     private fun normalize(value: String?): String? {

@@ -56,16 +56,30 @@ jobs:
             exit 1
           fi
           echo "CINEVO_KEYSTORE_PATH=$RUNNER_TEMP/cinevo-test-signing.jks" >> "$GITHUB_ENV"
-      - name: Build debug APK
+      - name: Run stability regression tests and build debug APK
         working-directory: Lumera
         env:
           CINEVO_KEYSTORE_PASSWORD: ${{ secrets.CINEVO_KEYSTORE_PASSWORD }}
           CINEVO_KEY_ALIAS: ${{ secrets.CINEVO_KEY_ALIAS }}
           CINEVO_KEY_PASSWORD: ${{ secrets.CINEVO_KEY_PASSWORD }}
-        run: bash ./gradlew :app:assembleDebug --no-daemon
+        run: bash ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - name: Verify Cinevo identity, version and signing certificate
+        working-directory: Lumera
+        run: python3 scripts/verify-shield-apk.py
+      - name: Save regression test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinevo-test-results
+          path: |
+            Lumera/app/build/reports/tests/testDebugUnitTest/
+            Lumera/app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
       - name: Save debug APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: cinevo-shield-debug
-          path: Lumera/app/build/outputs/apk/debug/*.apk
+          path: |
+            Lumera/app/build/cinevo/Cinevo-Test-v0.2.2.apk
+            Lumera/app/build/cinevo/verification.json
           if-no-files-found: error

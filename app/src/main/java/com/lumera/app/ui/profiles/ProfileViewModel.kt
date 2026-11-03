@@ -8,15 +8,22 @@ import com.lumera.app.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.lumera.app.data.trakt.TraktAuthManager
+import com.lumera.app.data.player.PlaybackTrackSelectionStore
+import com.lumera.app.data.player.SourceSelectionStore
 import javax.inject.Inject
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val traktAuthManager: TraktAuthManager,
+    private val trackSelections: PlaybackTrackSelectionStore,
+    private val sourceSelections: SourceSelectionStore
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<ProfileEntity>>(emptyList())
@@ -30,6 +37,10 @@ class ProfileViewModel @Inject constructor(
 
     private val _isInitializingProfile = MutableStateFlow(false)
     val isInitializingProfile: StateFlow<Boolean> = _isInitializingProfile
+
+    private val _operationError = MutableStateFlow<String?>(null)
+    val operationError: StateFlow<String?> = _operationError
+    fun clearOperationError() { _operationError.value = null }
 
     // WIZARD DATA
     var tempName = ""
@@ -128,6 +139,10 @@ class ProfileViewModel @Inject constructor(
             try {
                 profileConfigurationManager.initializeFromScratch(profileId)
                 onComplete()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _operationError.value = error.message ?: "Unable to set up this profile. Your saved data has been preserved."
             } finally {
                 _isInitializingProfile.value = false
             }
@@ -140,6 +155,10 @@ class ProfileViewModel @Inject constructor(
             try {
                 profileConfigurationManager.initializeByCopying(targetProfileId, sourceProfileId)
                 onComplete()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _operationError.value = error.message ?: "Unable to set up this profile. Your saved data has been preserved."
             } finally {
                 _isInitializingProfile.value = false
             }
@@ -152,6 +171,10 @@ class ProfileViewModel @Inject constructor(
             try {
                 profileConfigurationManager.initializeWithServicesOnly(targetProfileId, sourceProfileId)
                 onComplete()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _operationError.value = error.message ?: "Unable to set up this profile. Your saved data has been preserved."
             } finally {
                 _isInitializingProfile.value = false
             }
@@ -160,8 +183,16 @@ class ProfileViewModel @Inject constructor(
 
     fun deleteProfile(id: Int) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.deleteProfile(id)
-            profileConfigurationManager.deleteProfileState(id)
+            try {
+                profileConfigurationManager.deleteProfileState(id)
+                traktAuthManager.clearTokensForProfile(id)
+                trackSelections.clearProfile(id)
+                sourceSelections.clearProfile(id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _operationError.value = error.message ?: "Unable to delete this profile."
+            }
         }
     }
 

@@ -57,7 +57,7 @@ class AppUpdateManager @Inject constructor(
     val state = _state.asStateFlow()
 
     val isPopupEnabled: Boolean
-        get() = prefs.getBoolean(KEY_UPDATE_POPUP_ENABLED, true)
+        get() = CinevoUpdatePolicy.inAppUpdatesEnabled && prefs.getBoolean(KEY_UPDATE_POPUP_ENABLED, true)
 
     fun setPopupEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_UPDATE_POPUP_ENABLED, enabled).apply()
@@ -70,6 +70,10 @@ class AppUpdateManager @Inject constructor(
     private var lastReleaseBody: String? = null
 
     suspend fun checkForUpdate() {
+        if (!CinevoUpdatePolicy.inAppUpdatesEnabled) {
+            _state.value = UpdateState.Error(CinevoUpdatePolicy.deliveryMessage)
+            return
+        }
         _state.value = UpdateState.Checking
         try {
             val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
@@ -108,6 +112,10 @@ class AppUpdateManager @Inject constructor(
     }
 
     suspend fun downloadAndInstall(apkUrl: String) {
+        if (!CinevoUpdatePolicy.inAppUpdatesEnabled) {
+            _state.value = UpdateState.Error(CinevoUpdatePolicy.deliveryMessage)
+            return
+        }
         if (!isAllowedDownloadUrl(apkUrl)) {
             _state.value = UpdateState.Error("Download URL is not from a trusted source.")
             return
@@ -187,6 +195,7 @@ class AppUpdateManager @Inject constructor(
     }
 
     private fun installApk(apkFile: File) {
+        check(CinevoUpdatePolicy.inAppUpdatesEnabled) { CinevoUpdatePolicy.deliveryMessage }
         val uri: Uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",

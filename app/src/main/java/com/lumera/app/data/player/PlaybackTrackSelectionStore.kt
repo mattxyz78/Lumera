@@ -2,12 +2,14 @@ package com.lumera.app.data.player
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PlaybackTrackSelectionStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val coordinator: ProfileRuntimeCoordinator
 ) {
     data class Selection(
         val audioTrackId: String?,
@@ -17,8 +19,8 @@ class PlaybackTrackSelectionStore @Inject constructor(
 
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
-    fun getSelection(playbackId: String): Selection? {
-        val scopedId = canonicalPlaybackId(playbackId) ?: return null
+    fun getSelection(playbackId: String, profileId: Int? = coordinator.session?.profileId): Selection? {
+        val scopedId = canonicalPlaybackId(playbackId, profileId) ?: return null
         val audioTrackId = prefs.getString(audioKey(scopedId), null)
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -45,9 +47,10 @@ class PlaybackTrackSelectionStore @Inject constructor(
         subtitleDelayMs: Long? = null,
         updateAudio: Boolean,
         updateSubtitle: Boolean,
-        updateSubtitleDelay: Boolean = false
+        updateSubtitleDelay: Boolean = false,
+        profileId: Int? = coordinator.session?.profileId
     ) {
-        val scopedId = canonicalPlaybackId(playbackId) ?: return
+        val scopedId = canonicalPlaybackId(playbackId, profileId) ?: return
         if (!updateAudio && !updateSubtitle && !updateSubtitleDelay) return
 
         prefs.edit().apply {
@@ -78,8 +81,8 @@ class PlaybackTrackSelectionStore @Inject constructor(
         }.apply()
     }
 
-    fun clearSelection(playbackId: String) {
-        val scopedId = canonicalPlaybackId(playbackId) ?: return
+    fun clearSelection(playbackId: String, profileId: Int? = coordinator.session?.profileId) {
+        val scopedId = canonicalPlaybackId(playbackId, profileId) ?: return
         prefs.edit()
             .remove(audioKey(scopedId))
             .remove(subtitleKey(scopedId))
@@ -88,11 +91,12 @@ class PlaybackTrackSelectionStore @Inject constructor(
     }
 
     fun clearSelectionsForPrefix(prefix: String) {
+        val scopedPrefix = canonicalPlaybackId(prefix) ?: return
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
-            if (key.startsWith("${KEY_AUDIO_PREFIX}$prefix") ||
-                key.startsWith("${KEY_SUBTITLE_PREFIX}$prefix") ||
-                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$prefix")
+            if (key.startsWith("${KEY_AUDIO_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_SUBTITLE_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }
@@ -100,8 +104,17 @@ class PlaybackTrackSelectionStore @Inject constructor(
         editor.apply()
     }
 
-    private fun canonicalPlaybackId(playbackId: String): String? {
-        return playbackId.trim().takeIf { it.isNotEmpty() }
+    private fun canonicalPlaybackId(playbackId: String, profileId: Int? = coordinator.session?.profileId): String? {
+        val id = playbackId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return profileId?.let { "profile:$it:$id" }
+    }
+
+    fun clearProfile(profileId: Int) {
+        val prefixes = listOf(KEY_AUDIO_PREFIX, KEY_SUBTITLE_PREFIX, KEY_SUBTITLE_DELAY_PREFIX)
+        prefs.edit().apply {
+            prefs.all.keys.filter { key -> prefixes.any { key.startsWith("${it}profile:$profileId:") } }
+                .forEach { remove(it) }
+        }.apply()
     }
 
     private fun audioKey(scopedId: String): String = "${KEY_AUDIO_PREFIX}$scopedId"

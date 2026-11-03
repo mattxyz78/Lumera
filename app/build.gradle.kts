@@ -30,11 +30,11 @@ android {
         applicationId = "com.cinevo.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.2.1-cinevo-test"
+        versionCode = 13
+        versionName = "0.2.2-cinevo-test"
 
         // GitHub repository for auto-update system
-        buildConfigField("String", "GITHUB_OWNER", "\"LumeraD3v\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"mattxyz78\"")
         buildConfigField("String", "GITHUB_REPO", "\"Lumera\"")
 
         // ACRA crash reporting (loaded from local.properties)
@@ -83,6 +83,8 @@ android {
             )
         }
     }
+
+    testOptions { unitTests.isIncludeAndroidResources = true }
 
     lint {
         abortOnError = false
@@ -166,6 +168,12 @@ dependencies {
     implementation(files("../playbackcore/libs/lib-decoder-ffmpeg-release.aar"))
     implementation(files("../playbackcore/libs/lib-decoder-iamf-release.aar"))
     implementation(files("../playbackcore/libs/lib-decoder-mpegh-release.aar"))
+
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
 
     // 8. Testing & Debugging
     debugImplementation(libs.androidx.compose.ui.tooling)

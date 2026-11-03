@@ -2,6 +2,10 @@ package com.lumera.app.data.profile
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.AtomicFile
+import com.google.gson.JsonArray
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.google.gson.Gson
 import com.lumera.app.data.auth.StremioAuthManager
 import com.lumera.app.data.local.AddonDao
@@ -27,7 +31,8 @@ data class ProfileRuntimeSnapshot(
     val hubRowItems: List<HubRowItemEntity> = emptyList(),
     val watchHistory: List<WatchHistoryEntity> = emptyList(),
     val watchlist: List<WatchlistEntity> = emptyList(),
-    val seriesNextUp: List<SeriesNextUpEntity> = emptyList()
+    val seriesNextUp: List<SeriesNextUpEntity> = emptyList(),
+    val snapshotVersion: Int = 1
 )
 
 @Singleton
@@ -35,12 +40,14 @@ class ProfileConfigurationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: AddonDao,
     private val stremioAuthManager: StremioAuthManager,
-    private val addonRepository: AddonRepository
+    private val addonRepository: AddonRepository,
+    private val coordinator: ProfileRuntimeCoordinator
 ) {
     companion object {
         private const val PREFS_FILE = "profile_configuration_prefs"
         private const val KEY_PENDING_SETUP_PROFILES = "pending_setup_profiles"
         private const val KEY_LAST_ACTIVE_PROFILE_ID = "last_active_profile_id"
+        private const val KEY_PENDING_SWITCH = "pending_runtime_switch"
         private const val SNAPSHOT_DIR = "profile_snapshots"
         private const val DEFAULT_CINEMETA_MANIFEST_URL = "https://v3-cinemeta.strem.io/manifest.json"
         private const val DEFAULT_CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
@@ -67,37 +74,97 @@ class ProfileConfigurationManager @Inject constructor(
         prefs.edit().putStringSet(KEY_PENDING_SETUP_PROFILES, updated).apply()
     }
 
-    suspend fun captureStartupRuntimeIfNeeded() {
+    private suspend fun captureStartupRuntimeIfNeededLocked() {
         if (startupRuntimeCaptured) return
-        startupRuntimeCaptured = true
-
-        val lastActive = getLastActiveProfileId() ?: return
+        val pending = prefs.getInt(KEY_PENDING_SWITCH, -1)
+        if (pending != -1) {
+            check(dao.getProfileById(pending) != null) { "Interrupted profile switch needs recovery." }
+            loadRuntimeStateLocked(pending)
+            coordinator.activate(pending)
+            startupRuntimeCaptured = true
+            return
+        }
+        val lastActive = getLastActiveProfileId() ?: run { startupRuntimeCaptured = true; return }
         if (needsInitialSetup(lastActive)) return
-        saveRuntimeState(lastActive)
+        saveRuntimeStateLocked(lastActive)
+        coordinator.activate(lastActive)
+        startupRuntimeCaptured = true
     }
 
-    suspend fun saveRuntimeState(profileId: Int) {
+    private suspend fun saveRuntimeStateLocked(profileId: Int) {
         val snapshot = captureRuntimeSnapshot()
         writeSnapshot(profileId, snapshot)
         stremioAuthManager.saveCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
     }
 
-    suspend fun saveActiveRuntimeState() {
-        val activeId = getLastActiveProfileId() ?: return
-        saveRuntimeState(activeId)
+    suspend fun saveActiveRuntimeState() = coordinator.exclusive {
+        withContext(Dispatchers.IO) {
+            coordinator.session?.profileId?.let { saveRuntimeStateLocked(it) }
+        }
     }
 
-    suspend fun loadRuntimeState(profileId: Int) {
+    suspend fun switchRuntimeState(profileId: Int) = coordinator.exclusive {
+        withContext(Dispatchers.IO) {
+            captureStartupRuntimeIfNeededLocked()
+            val outgoing = coordinator.session?.profileId
+            if (outgoing == profileId) return@withContext
+            outgoing?.let { saveRuntimeStateLocked(it) }
+            try {
+                loadRuntimeStateLocked(profileId)
+                coordinator.activate(profileId)
+            } catch (failure: Exception) {
+                // The outgoing snapshot was saved before the transition. If the
+                // incoming load partly completed, restore its known owner.
+                try {
+                    outgoing?.let {
+                        loadRuntimeStateLocked(it)
+                        if (coordinator.session?.profileId != it) coordinator.activate(it)
+                    }
+                } catch (recoveryFailure: Exception) {
+                    coordinator.deactivate()
+                    failure.addSuppressed(recoveryFailure)
+                }
+                throw failure
+            }
+        }
+    }
+
+    suspend fun endSession() = coordinator.exclusive {
+        withContext(Dispatchers.IO) {
+            coordinator.session?.profileId?.let { saveRuntimeStateLocked(it) }
+            // Retain the DB owner's ID for crash/startup recovery.
+            coordinator.deactivate()
+        }
+    }
+
+    suspend fun initializeFromScratch(profileId: Int) = coordinator.exclusive {
+        withContext(Dispatchers.IO) { initializeFromScratchLocked(profileId) }
+    }
+
+    suspend fun initializeByCopying(targetProfileId: Int, sourceProfileId: Int) = coordinator.exclusive {
+        withContext(Dispatchers.IO) { initializeByCopyingLocked(targetProfileId, sourceProfileId) }
+    }
+
+    suspend fun initializeWithServicesOnly(targetProfileId: Int, sourceProfileId: Int) = coordinator.exclusive {
+        withContext(Dispatchers.IO) { initializeWithServicesOnlyLocked(targetProfileId, sourceProfileId) }
+    }
+
+    private suspend fun loadRuntimeStateLocked(profileId: Int) {
         val existingSnapshot = readSnapshot(profileId)
         val snapshot = existingSnapshot ?: if (!needsInitialSetup(profileId)) {
-            captureRuntimeSnapshot().also {
-                writeSnapshot(profileId, it)
-                stremioAuthManager.saveCredentialsForProfile(profileId)
-            }
+            // Never borrow another person's viewing activity or credentials.
+            captureRuntimeSnapshot().copy(
+                hubRows = emptyList(), hubRowItems = emptyList(),
+                watchHistory = emptyList(), watchlist = emptyList(), seriesNextUp = emptyList()
+            ).also { writeSnapshot(profileId, it) }
         } else {
             ProfileRuntimeSnapshot()
         }
+        // Persist the incoming snapshot and transition intent before touching
+        // the shared DB. Startup can replay this if the process dies mid-switch.
+        writeSnapshot(profileId, snapshot)
+        check(prefs.edit().putInt(KEY_PENDING_SWITCH, profileId).commit())
         dao.replaceRuntimeState(
             addons = snapshot.addons,
             catalogConfigs = snapshot.catalogConfigs,
@@ -109,20 +176,19 @@ class ProfileConfigurationManager @Inject constructor(
         )
         stremioAuthManager.loadCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
+        check(prefs.edit().remove(KEY_PENDING_SWITCH).commit())
     }
 
-    suspend fun initializeFromScratch(profileId: Int) {
+    private suspend fun initializeFromScratchLocked(profileId: Int) {
         writeSnapshot(profileId, createDefaultRuntimeSnapshot())
         stremioAuthManager.clearCredentialsForProfile(profileId)
         clearPendingSetup(profileId)
     }
 
-    suspend fun initializeByCopying(targetProfileId: Int, sourceProfileId: Int) {
-        captureStartupRuntimeIfNeeded()
-        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot().also {
-            writeSnapshot(sourceProfileId, it)
-            stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
-        }
+    private suspend fun initializeByCopyingLocked(targetProfileId: Int, sourceProfileId: Int) {
+        captureStartupRuntimeIfNeededLocked()
+        if (coordinator.session?.profileId == sourceProfileId) saveRuntimeStateLocked(sourceProfileId)
+        val sourceSnapshot = readSnapshot(sourceProfileId) ?: error("This profile has no saved configuration. Open it before copying services.")
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList(), watchlist = emptyList(), seriesNextUp = emptyList()))
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
@@ -135,12 +201,10 @@ class ProfileConfigurationManager @Inject constructor(
      * Existing profile snapshots remain independent until shared-service
      * synchronization is implemented separately.
      */
-    suspend fun initializeWithServicesOnly(targetProfileId: Int, sourceProfileId: Int) {
-        captureStartupRuntimeIfNeeded()
-        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot().also {
-            writeSnapshot(sourceProfileId, it)
-            stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
-        }
+    private suspend fun initializeWithServicesOnlyLocked(targetProfileId: Int, sourceProfileId: Int) {
+        captureStartupRuntimeIfNeededLocked()
+        if (coordinator.session?.profileId == sourceProfileId) saveRuntimeStateLocked(sourceProfileId)
+        val sourceSnapshot = readSnapshot(sourceProfileId) ?: error("This profile has no saved configuration. Open it before copying services.")
         writeSnapshot(
             targetProfileId,
             ProfileRuntimeSnapshot(
@@ -163,9 +227,11 @@ class ProfileConfigurationManager @Inject constructor(
         clearPendingSetup(targetProfileId)
     }
 
-    fun deleteProfileState(profileId: Int) {
+    suspend fun deleteProfileState(profileId: Int) = coordinator.exclusive {
+        check(coordinator.session?.profileId != profileId) { "Switch out of this profile before deleting it." }
+        dao.deleteProfile(profileId)
         clearPendingSetup(profileId)
-        snapshotFile(profileId).delete()
+        AtomicFile(snapshotFile(profileId)).delete()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
@@ -267,16 +333,41 @@ class ProfileConfigurationManager @Inject constructor(
 
     private fun writeSnapshot(profileId: Int, snapshot: ProfileRuntimeSnapshot) {
         val file = snapshotFile(profileId)
-        file.parentFile?.mkdirs()
-        file.writeText(gson.toJson(snapshot))
+        check(file.parentFile?.let { it.exists() || it.mkdirs() } == true)
+        val atomic = AtomicFile(file)
+        val output = atomic.startWrite()
+        try {
+            output.write(gson.toJson(snapshot).toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output)
+        } catch (error: Throwable) {
+            atomic.failWrite(output)
+            throw error
+        }
     }
 
     private fun readSnapshot(profileId: Int): ProfileRuntimeSnapshot? {
         val file = snapshotFile(profileId)
-        if (!file.exists()) return null
-        return runCatching {
-            gson.fromJson(file.readText(), ProfileRuntimeSnapshot::class.java)
-        }.getOrNull()
+        if (!file.exists() && !File(file.path + ".bak").exists()) return null
+        try {
+            val json = com.google.gson.JsonParser.parseString(
+                AtomicFile(file).readFully().toString(Charsets.UTF_8)
+            ).asJsonObject
+            if (json.has("snapshotVersion")) {
+                check(json.get("snapshotVersion").asInt in 0..1) { "Unsupported profile snapshot version" }
+            }
+            // Pre-watchlist snapshots legitimately have missing arrays. Gson does
+            // not apply Kotlin defaults, so normalise before constructing the model.
+            for (key in listOf("addons", "catalogConfigs", "hubRows", "hubRowItems",
+                "watchHistory", "watchlist", "seriesNextUp")) {
+                if (!json.has(key) || json.get(key).isJsonNull) json.add(key, JsonArray())
+                check(json.get(key).isJsonArray) { "Invalid snapshot array" }
+            }
+            return gson.fromJson(json, ProfileRuntimeSnapshot::class.java)
+                ?: error("Empty snapshot")
+        } catch (error: Exception) {
+            // Keep the original bytes for recovery; do not overwrite with another profile.
+            throw IllegalStateException("This profile's saved data could not be read. It has been preserved; try another profile.", error)
+        }
     }
 
     private fun snapshotFile(profileId: Int): File {
@@ -297,6 +388,6 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     private fun setLastActiveProfileId(profileId: Int) {
-        prefs.edit().putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId).apply()
+        check(prefs.edit().putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId).commit())
     }
 }

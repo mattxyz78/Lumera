@@ -28,6 +28,7 @@ import com.lumera.app.ui.player.base.PlayerLoadRequest
 import com.lumera.app.ui.player.base.PlayerSourceOption
 import com.lumera.app.ui.player.base.PlayerSubtitleSource
 import com.lumera.app.ui.player.base.SkipSegmentInfo
+import com.lumera.app.data.player.PlaybackCompletion
 import com.lumera.app.data.model.stremio.MetaVideo
 import com.lumera.app.data.torrent.TorrentProgress
 
@@ -38,7 +39,8 @@ data class PlayerSessionResult(
     val selectedSourceUrl: String?,
     val selectedAudioTrackId: String?,
     val selectedSubtitleTrackId: String?,
-    val subtitleDelayMs: Long = 0L
+    val subtitleDelayMs: Long = 0L,
+    val profileId: Int? = null
 )
 
 @Composable
@@ -74,6 +76,7 @@ fun PlayerScreen(
     torrentProgress: TorrentProgress? = null,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
+    val profileSession = remember(movieId) { viewModel.captureSession() }
     val context = LocalContext.current
     val hostView = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -120,7 +123,7 @@ fun PlayerScreen(
     // Stop previous episode when switching to a new one
     LaunchedEffect(movieId) {
         if (lastScrobbleId != movieId && lastScrobbleDurationMs > 0L) {
-            viewModel.scrobbleStop(lastScrobbleId, mediaType, lastScrobblePositionMs, lastScrobbleDurationMs)
+            viewModel.scrobbleStop(lastScrobbleId, mediaType, lastScrobblePositionMs, lastScrobbleDurationMs, owner = profileSession)
         }
         lastScrobbleId = movieId
     }
@@ -129,9 +132,9 @@ fun PlayerScreen(
     LaunchedEffect(uiState.isPlaying) {
         if (uiState.durationMs <= 0L) return@LaunchedEffect
         if (uiState.isPlaying) {
-            viewModel.scrobbleStart(movieId, mediaType, uiState.positionMs, uiState.durationMs)
+            viewModel.scrobbleStart(movieId, mediaType, uiState.positionMs, uiState.durationMs, owner = profileSession)
         } else if (uiState.isReady) {
-            viewModel.scrobblePause(movieId, mediaType, uiState.positionMs, uiState.durationMs)
+            viewModel.scrobblePause(movieId, mediaType, uiState.positionMs, uiState.durationMs, owner = profileSession)
         }
     }
 
@@ -154,7 +157,8 @@ fun PlayerScreen(
                     title = title,
                     poster = poster,
                     position = pos,
-                    duration = dur
+                    duration = dur,
+                    owner = profileSession, thresholdPercent = playbackSettings.watchedThreshold
                 )
             }
         }
@@ -175,7 +179,8 @@ fun PlayerScreen(
                     title = title,
                     poster = poster,
                     position = state.positionMs.coerceAtLeast(0L),
-                    duration = state.durationMs.takeIf { it > 0L }
+                    duration = state.durationMs.takeIf { it > 0L },
+                    owner = profileSession, thresholdPercent = playbackSettings.watchedThreshold
                 )
             }
         }
@@ -183,7 +188,7 @@ fun PlayerScreen(
 
     LaunchedEffect(movieId, videoUrl, backendType) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
-        val resumePosition = viewModel.getResumePosition(movieId)
+        val resumePosition = viewModel.getResumePosition(movieId, profileSession)
         playbackController.load(
             PlayerLoadRequest(
                 mediaUrl = videoUrl,
@@ -210,6 +215,7 @@ fun PlayerScreen(
         val hasError = !uiState.errorMessage.isNullOrBlank()
         val position = uiState.positionMs.coerceAtLeast(0L)
         val duration = uiState.durationMs.takeIf { it > 0L }
+        val completed = PlaybackCompletion.isCompleted(position, duration, playbackSettings.watchedThreshold)
         val remaining = duration?.minus(position) ?: Long.MAX_VALUE
         val completionRatio = if (duration != null && duration > 0L) {
             position.toDouble() / duration.toDouble()
@@ -220,34 +226,28 @@ fun PlayerScreen(
         // Trakt: pause keeps item in continue watching, stop marks as watched
         if (!hasError && duration != null && duration > 0L) {
             if (completionRatio >= 0.90 || remaining <= 30_000L) {
-                viewModel.scrobbleStop(movieId, mediaType, position, duration)
+                viewModel.scrobbleStop(movieId, mediaType, position, duration, owner = profileSession)
             } else {
-                viewModel.scrobblePause(movieId, mediaType, position, duration, force = true)
+                viewModel.scrobblePause(movieId, mediaType, position, duration, force = true, owner = profileSession)
             }
         }
 
-        // Don't save progress when exiting due to error
+        // Always persist the final position before reporting completion.
         if (!hasError) {
-            if (completionRatio >= 0.98 || remaining <= 30_000L) {
-                viewModel.markCompleted(movieId)
-            } else {
-                viewModel.saveProgress(
-                    id = movieId,
-                    type = mediaType,
-                    title = title,
-                    poster = poster,
-                    position = position,
-                    duration = duration
-                )
-            }
+            viewModel.saveProgress(
+                id = movieId, type = mediaType, title = title, poster = poster,
+                position = position, duration = duration,
+                owner = profileSession, thresholdPercent = playbackSettings.watchedThreshold
+            )
         }
         val selectedSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
             ?: videoUrl
         onBack(
             PlayerSessionResult(
+                profileId = profileSession?.profileId,
                 positionMs = if (hasError) 0L else position,
                 durationMs = duration,
-                isCompleted = !hasError && (completionRatio >= 0.98 || remaining <= 30_000L),
+                isCompleted = !hasError && completed,
                 selectedSourceUrl = selectedSourceUrl,
                 selectedAudioTrackId = uiState.selectedAudioTrackId,
                 selectedSubtitleTrackId = uiState.selectedSubtitleTrackId,

@@ -13,12 +13,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
 import javax.inject.Inject
 
 @HiltViewModel
 class WatchlistViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val repository: AddonRepository
+    private val repository: AddonRepository,
+    private val coordinator: ProfileRuntimeCoordinator
 ) : ViewModel() {
 
     private val resolveInFlight = mutableSetOf<String>()
@@ -44,12 +46,16 @@ class WatchlistViewModel @Inject constructor(
         if (!item.poster.isNullOrBlank()) return
         if (!resolveInFlight.add(item.id)) return
 
+        val owner = coordinator.session
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val meta = repository.resolveMetaDetails(item.type, item.id) ?: return@launch
                 if (!meta.poster.isNullOrBlank()) {
-                    val existing = dao.getWatchlistItem(item.id) ?: return@launch
-                    dao.addToWatchlist(existing.copy(poster = meta.poster))
+                    coordinator.forSession(owner) {
+                        dao.getWatchlistItem(item.id)?.let { existing ->
+                            dao.addToWatchlist(existing.copy(poster = meta.poster))
+                        }
+                    }
                 }
             } catch (_: Exception) {
             } finally {

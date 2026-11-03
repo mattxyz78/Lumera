@@ -10,15 +10,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
+import com.lumera.app.data.profile.ProfileSession
+import com.lumera.app.data.player.PlaybackCompletion
 import javax.inject.Inject
 
-private const val WATCHED_THRESHOLD = 0.90 // 90% — above Trakt's 80% minimum
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val traktScrobbleManager: TraktScrobbleManager
+    private val traktScrobbleManager: TraktScrobbleManager,
+    private val coordinator: ProfileRuntimeCoordinator
 ) : ViewModel() {
+
+    fun captureSession(): ProfileSession? = coordinator.session
 
     fun saveProgress(
         id: String,
@@ -26,72 +31,64 @@ class PlayerViewModel @Inject constructor(
         title: String,
         poster: String?,
         position: Long,
-        duration: Long?
+        duration: Long?,
+        owner: ProfileSession?,
+        thresholdPercent: Int
     ) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             if (id.startsWith("trailer_")) return@launch
             val safePosition = position.coerceAtLeast(0L)
             if (safePosition < 5_000L) return@launch
 
-            val existing = dao.getHistoryItem(id)
-            val safeDuration = (duration ?: existing?.duration ?: safePosition)
-                .coerceAtLeast(safePosition)
+            coordinator.forSession(owner) {
+                val existing = dao.getHistoryItem(id)
+                val safeDuration = duration?.takeIf { it > 0L }
+                    ?: existing?.duration?.takeIf { it > 0L } ?: 0L
+                val isCompleted = PlaybackCompletion.isCompleted(safePosition, safeDuration, thresholdPercent)
 
-            val remaining = safeDuration - safePosition
-            val completionRatio = if (safeDuration > 0L) safePosition.toDouble() / safeDuration.toDouble() else 0.0
-
-            val isCompleted = completionRatio >= WATCHED_THRESHOLD || remaining <= 30_000L
-
-            val entry = WatchHistoryEntity(
-                id = id,
-                title = title,
-                poster = poster ?: existing?.poster,
-                background = existing?.background,
-                logo = existing?.logo,
-                position = safePosition,
-                duration = safeDuration,
-                lastWatched = System.currentTimeMillis(),
-                type = type.ifBlank { "movie" },
-                watched = isCompleted,
-                scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
-            )
-            dao.upsertHistory(entry)
-        }
-    }
-
-    fun markCompleted(id: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val existing = dao.getHistoryItem(id)
-            if (existing != null) {
-                dao.upsertHistory(existing.copy(watched = true, lastWatched = System.currentTimeMillis()))
+                val entry = WatchHistoryEntity(
+                    id = id,
+                    title = title,
+                    poster = poster ?: existing?.poster,
+                    background = existing?.background,
+                    logo = existing?.logo,
+                    position = safePosition,
+                    duration = safeDuration,
+                    lastWatched = System.currentTimeMillis(),
+                    type = type.ifBlank { "movie" },
+                    watched = isCompleted,
+                    scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
+                )
+                dao.upsertHistory(entry)
             }
         }
     }
 
     // ── Trakt Scrobbling ──
 
-    fun scrobbleStart(id: String, type: String, positionMs: Long, durationMs: Long) {
+    fun scrobbleStart(id: String, type: String, positionMs: Long, durationMs: Long, owner: ProfileSession?) {
         viewModelScope.launch(Dispatchers.IO) {
-            traktScrobbleManager.scrobbleStart(id, type, positionMs, durationMs)
+            coordinator.forSession(owner) { traktScrobbleManager.scrobbleStart(id, type, positionMs, durationMs) }
         }
     }
 
-    fun scrobblePause(id: String, type: String, positionMs: Long, durationMs: Long, force: Boolean = false) {
+    fun scrobblePause(id: String, type: String, positionMs: Long, durationMs: Long, force: Boolean = false, owner: ProfileSession?) {
         viewModelScope.launch(Dispatchers.IO) {
-            traktScrobbleManager.scrobblePause(id, type, positionMs, durationMs, force = force)
+            coordinator.forSession(owner) { traktScrobbleManager.scrobblePause(id, type, positionMs, durationMs, force = force) }
         }
     }
 
-    fun scrobbleStop(id: String, type: String, positionMs: Long, durationMs: Long) {
+    fun scrobbleStop(id: String, type: String, positionMs: Long, durationMs: Long, owner: ProfileSession?) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            traktScrobbleManager.scrobbleStop(id, type, positionMs, durationMs)
+            coordinator.forSession(owner) { traktScrobbleManager.scrobbleStop(id, type, positionMs, durationMs) }
         }
     }
 
-    suspend fun getResumePosition(id: String): Long {
+    suspend fun getResumePosition(id: String, owner: ProfileSession?): Long {
         return withContext(Dispatchers.IO) {
-            val item = dao.getHistoryItem(id)
-            item?.position?.takeIf { it > 0 } ?: 0L
+            coordinator.forSession(owner) {
+                dao.getHistoryItem(id)?.position?.takeIf { it > 0 } ?: 0L
+            } ?: 0L
         }
     }
 }

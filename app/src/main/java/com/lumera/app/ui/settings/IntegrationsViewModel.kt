@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
 import javax.inject.Inject
 
 sealed class IntegrationsEvent {
@@ -48,7 +49,8 @@ class IntegrationsViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val dao: AddonDao,
     private val traktAuthManager: TraktAuthManager,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val coordinator: ProfileRuntimeCoordinator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IntegrationsUiState())
@@ -75,7 +77,8 @@ class IntegrationsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(traktAuthState = authState)
                 // Push existing local watchlist + pull from Trakt after first auth
                 if (authState is DeviceAuthState.Success) {
-                    traktSyncManager.initialSync()
+                    val owner = coordinator.session
+                    coordinator.forSession(owner) { traktSyncManager.initialSync() }
                 }
             }
         }

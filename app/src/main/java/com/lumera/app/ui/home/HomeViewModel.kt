@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.lumera.app.data.profile.ProfileRuntimeCoordinator
 import javax.inject.Inject
 
 import com.lumera.app.domain.HomeRowItem
@@ -34,7 +35,8 @@ class HomeViewModel @Inject constructor(
     private val dao: AddonDao,
     @ApplicationContext private val context: Context,
     private val tmdbService: TmdbService,
-    private val tmdbMetadataService: TmdbMetadataService
+    private val tmdbMetadataService: TmdbMetadataService,
+    private val coordinator: ProfileRuntimeCoordinator
 ) : ViewModel() {
 
     private var loadJob: kotlinx.coroutines.Job? = null
@@ -269,6 +271,7 @@ class HomeViewModel @Inject constructor(
 
         if (!metadataRequestsInFlight.add(key)) return
 
+        val owner = coordinator.session
         viewModelScope.launch {
             try {
                 val meta = repository.resolveMetaDetails(item.type, item.id)
@@ -288,32 +291,34 @@ class HomeViewModel @Inject constructor(
 
                 // Persist resolved images to watch history + series next-up DB
                 launch(Dispatchers.IO) {
-                    // For series, the history stores episode-level IDs (e.g. tt123:1:3)
-                    // but the MetaItem uses the canonical series ID (tt123).
-                    // Look up both the exact ID and all episode entries by prefix.
-                    val historyItems = if (item.type == "series") {
-                        dao.getHistoryItemsByPrefix(item.id)
-                    } else {
-                        listOfNotNull(dao.getHistoryItem(item.id))
-                    }
-                    for (historyItem in historyItems) {
-                        val needsPoster = historyItem.poster.isNullOrBlank() && !fallback.poster.isNullOrBlank()
-                        val needsBackground = historyItem.background.isNullOrBlank() && !fallback.background.isNullOrBlank()
-                        val needsLogo = historyItem.logo.isNullOrBlank() && !fallback.logo.isNullOrBlank()
-                        if (needsPoster || needsBackground || needsLogo) {
-                            dao.updateHistoryImages(
-                                id = historyItem.id,
-                                poster = if (needsPoster) fallback.poster else historyItem.poster,
-                                background = if (needsBackground) fallback.background else historyItem.background,
-                                logo = if (needsLogo) fallback.logo else historyItem.logo
-                            )
+                    coordinator.forSession(owner) {
+                        // For series, the history stores episode-level IDs (e.g. tt123:1:3)
+                        // but the MetaItem uses the canonical series ID (tt123).
+                        // Look up both the exact ID and all episode entries by prefix.
+                        val historyItems = if (item.type == "series") {
+                            dao.getHistoryItemsByPrefix(item.id)
+                        } else {
+                            listOfNotNull(dao.getHistoryItem(item.id))
                         }
-                    }
-                    // Also update series next-up poster if missing
-                    if (!fallback.poster.isNullOrBlank()) {
-                        val nextUp = dao.getSeriesNextUp(item.id)
-                        if (nextUp != null && nextUp.poster.isNullOrBlank()) {
-                            dao.upsertSeriesNextUp(nextUp.copy(poster = fallback.poster))
+                        for (historyItem in historyItems) {
+                            val needsPoster = historyItem.poster.isNullOrBlank() && !fallback.poster.isNullOrBlank()
+                            val needsBackground = historyItem.background.isNullOrBlank() && !fallback.background.isNullOrBlank()
+                            val needsLogo = historyItem.logo.isNullOrBlank() && !fallback.logo.isNullOrBlank()
+                            if (needsPoster || needsBackground || needsLogo) {
+                                dao.updateHistoryImages(
+                                    id = historyItem.id,
+                                    poster = if (needsPoster) fallback.poster else historyItem.poster,
+                                    background = if (needsBackground) fallback.background else historyItem.background,
+                                    logo = if (needsLogo) fallback.logo else historyItem.logo
+                                )
+                            }
+                        }
+                        // Also update series next-up poster if missing
+                        if (!fallback.poster.isNullOrBlank()) {
+                            val nextUp = dao.getSeriesNextUp(item.id)
+                            if (nextUp != null && nextUp.poster.isNullOrBlank()) {
+                                dao.upsertSeriesNextUp(nextUp.copy(poster = fallback.poster))
+                            }
                         }
                     }
                 }

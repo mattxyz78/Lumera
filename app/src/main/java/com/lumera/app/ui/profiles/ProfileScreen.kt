@@ -66,6 +66,14 @@ fun ProfileScreen(
     onProfileSelected: (ProfileEntity) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
+    val operationError by viewModel.operationError.collectAsState()
+    val errorContext = LocalContext.current
+    LaunchedEffect(operationError) {
+        operationError?.let {
+            android.widget.Toast.makeText(errorContext, it, android.widget.Toast.LENGTH_LONG).show()
+            viewModel.clearOperationError()
+        }
+    }
     val wizardStep by viewModel.wizardStep.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 

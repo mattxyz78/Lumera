@@ -609,6 +609,7 @@ private fun handlePlayerSessionEnd(
     onResumeHintResolved: (String?) -> Unit,
     rememberSourceSelection: Boolean = true
 ) {
+    val ownerProfileId = sessionResult.profileId ?: return
     val playbackId = selectedPlaybackId.trim()
     if (playbackId.isBlank()) {
         onConsumePendingSelection()
@@ -635,7 +636,8 @@ private fun handlePlayerSessionEnd(
             subtitleDelayMs = sessionResult.subtitleDelayMs,
             updateAudio = hasAudioTrackSelection,
             updateSubtitle = hasSubtitleTrackSelection,
-            updateSubtitleDelay = true
+            updateSubtitleDelay = true,
+            profileId = ownerProfileId
         )
     }
 
@@ -653,14 +655,15 @@ private fun handlePlayerSessionEnd(
             val shouldCommitSource = rememberSourceSelection && (sessionResult.isCompleted ||
                 sessionResult.positionMs >= SOURCE_SELECTION_COMMIT_MIN_POSITION_MS)
             if (shouldCommitSource) {
-                sourceSelectionStore.rememberSelection(pendingPlaybackId, selectedStream)
+                sourceSelectionStore.rememberSelection(pendingPlaybackId, selectedStream, ownerProfileId)
             } else if (sessionResult.positionMs <= SOURCE_SELECTION_FAILURE_RESET_MAX_POSITION_MS) {
                 val wasPreferred = sourceSelectionStore.findPreferredStream(
                     playbackId = pendingPlaybackId,
-                    streams = listOf(selectedStream)
+                    streams = listOf(selectedStream),
+                    profileId = ownerProfileId
                 ) != null
                 if (wasPreferred) {
-                    sourceSelectionStore.clearSelection(pendingPlaybackId)
+                    sourceSelectionStore.clearSelection(pendingPlaybackId, ownerProfileId)
                 }
             }
         }
@@ -706,7 +709,13 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         lifecycleScope.launch(Dispatchers.IO) {
-            profileConfigurationManager.saveActiveRuntimeState()
+            try {
+                profileConfigurationManager.saveActiveRuntimeState()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                android.util.Log.e("CinevoProfiles", "Profile snapshot save failed; runtime database retained")
+            }
         }
     }
 
@@ -900,6 +909,15 @@ class MainActivity : ComponentActivity() {
 
                 sessionRestoreAttemptedProfileId = profileIdToRestore
                 mainViewModel.login(profileIdToRestore)
+            }
+
+            val profileError by mainViewModel.profileError.collectAsState()
+            LaunchedEffect(profileError) {
+                profileError?.let {
+                    sessionProfileId = currentProfile?.id
+                    android.widget.Toast.makeText(this@MainActivity, it, android.widget.Toast.LENGTH_LONG).show()
+                    mainViewModel.clearProfileError()
+                }
             }
 
             // Resolve theme from profile's themeId
@@ -1672,7 +1690,7 @@ class MainActivity : ComponentActivity() {
                             if (selectedVideoUrl.isBlank() && torrentProgress == null) {
                                 LaunchedEffect(Unit) { activeView = "details" }
                             } else {
-                            val rememberedTrackSelection = remember(selectedPlaybackId) {
+                            val rememberedTrackSelection = remember(selectedPlaybackId, currentProfile?.id) {
                                 playbackTrackSelectionStore.getSelection(selectedPlaybackId)
                             }
                             val playerSources = remember(playerState.selectedPlayerSources) { playerState.selectedPlayerSources }
@@ -1748,6 +1766,7 @@ class MainActivity : ComponentActivity() {
                                 preferredSubtitleTrackId = rememberedTrackSelection?.subtitleTrackId,
                                 initialSubtitleDelayMs = rememberedTrackSelection?.subtitleDelayMs ?: 0L,
                                 playbackSettings = PlaybackSettings(
+                                    watchedThreshold = currentProfile?.watchedThreshold ?: 85,
                                     tunnelingEnabled = currentProfile?.tunnelingEnabled ?: false,
                                     mapDV7ToHevc = currentProfile?.mapDV7ToHevc ?: false,
                                     decoderPriority = currentProfile?.decoderPriority ?: 1,
@@ -1774,6 +1793,7 @@ class MainActivity : ComponentActivity() {
                                         // Mark current episode as completed
                                         handlePlayerSessionEnd(
                                             sessionResult = PlayerSessionResult(
+                                                profileId = currentProfile?.id,
                                                 positionMs = 0L,
                                                 durationMs = null,
                                                 isCompleted = true,
@@ -2043,6 +2063,7 @@ class MainActivity : ComponentActivity() {
                                             playerState.pendingEpisodeSwitch = null
                                             handlePlayerSessionEnd(
                                                 sessionResult = PlayerSessionResult(
+                                                profileId = currentProfile?.id,
                                                     positionMs = 0L,
                                                     durationMs = null,
                                                     isCompleted = false,
@@ -2133,6 +2154,7 @@ class MainActivity : ComponentActivity() {
                                         // Now save progress for current episode
                                         handlePlayerSessionEnd(
                                             sessionResult = PlayerSessionResult(
+                                                profileId = currentProfile?.id,
                                                 positionMs = 0L,
                                                 durationMs = null,
                                                 isCompleted = false,

@@ -49,6 +49,7 @@ data class PlayerLoadRequest(
 
 @Immutable
 data class PlaybackSettings(
+    val watchedThreshold: Int = 85,
     val tunnelingEnabled: Boolean = false,
     val mapDV7ToHevc: Boolean = false,
     val decoderPriority: Int = 1,
