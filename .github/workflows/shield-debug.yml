@@ -65,7 +65,9 @@ jobs:
         run: bash ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
       - name: Verify Cinevo identity, version and signing certificate
         working-directory: Lumera
-        run: python3 scripts/verify-shield-apk.py
+        run: |
+          python3 -m unittest discover -s scripts/tests
+          python3 scripts/verify-shield-apk.py
       - name: Save regression test results
         if: always()
         uses: actions/upload-artifact@v4
