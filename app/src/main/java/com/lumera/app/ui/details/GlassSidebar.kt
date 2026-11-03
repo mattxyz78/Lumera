@@ -88,7 +88,7 @@ fun GlassSidebarScaffold(
             Column(
                 Modifier
                     .fillMaxHeight()
-                    .width(panelWidth)
+                    .width(if (com.lumera.app.ui.components.isPhoneUi()) androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp else panelWidth)
                     .background(Brush.horizontalGradient(
                         colorStops = arrayOf(
                             0.0f to Color(0xCC000000),

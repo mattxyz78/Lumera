@@ -1,5 +1,9 @@
 package com.lumera.app.ui.profiles
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.lumera.app.ui.components.isPhoneUi
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -141,7 +145,7 @@ fun WelcomeView(onStart: () -> Unit) {
     ) {
         Text(
             "WELCOME TO CINEVO",
-            style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
+            style = (if (isPhoneUi()) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.displayMedium).copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
             color = Color(0xFFB7A3FF)
         )
         Spacer(Modifier.height(16.dp))
@@ -193,7 +197,7 @@ fun ProfileSelectorView(
 
         Spacer(Modifier.height(50.dp))
 
-        // Static centered row (no scrolling)
+        // TV stays centered; phone profiles can be swiped horizontally.
         val focusRequesters = remember(profiles.size) { 
             List(profiles.size) { FocusRequester() } 
         }
@@ -207,6 +211,7 @@ fun ProfileSelectorView(
         }
         
         Row(
+            modifier = if (isPhoneUi()) Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp) else Modifier,
             horizontalArrangement = Arrangement.spacedBy(32.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -345,7 +350,7 @@ private fun ProfileInitialSetupDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(520.dp)
+                .then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(520.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -410,7 +415,7 @@ private fun CopyProfileSelectionDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(560.dp)
+                .then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(560.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -470,7 +475,7 @@ private fun ScratchConfirmDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(520.dp)
+                .then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(520.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -532,7 +537,7 @@ fun ProfileOptionsDialog(
         Dialog(onDismissRequest = onDismiss) {
             Box(
                 modifier = Modifier
-                    .width(400.dp)
+                    .then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(400.dp))
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.Black)
                     .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -623,7 +628,7 @@ fun DeleteConfirmationDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(400.dp)
+                .then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(400.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -693,7 +698,7 @@ fun WizardNameStep(initialName: String, onNext: (String) -> Unit, onCancel: () -
         )
         Spacer(Modifier.height(32.dp))
 
-        Box(modifier = Modifier.width(400.dp)) {
+        Box(modifier = Modifier.then(if (isPhoneUi()) Modifier.fillMaxWidth() else Modifier.width(400.dp))) {
             VoidInput(
                 value = name,
                 onValueChange = { name = it },
@@ -1052,7 +1057,7 @@ fun ProfileCard(
     val isEditFocused by editInteractionSource.collectIsFocusedAsState()
     
     // Pencil is visible when either card or pencil is focused
-    val isPencilVisible = isCardFocused || isEditFocused
+    val isPencilVisible = isPhoneUi() || isCardFocused || isEditFocused
     
     val context = LocalContext.current
 

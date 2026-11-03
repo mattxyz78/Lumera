@@ -1,5 +1,9 @@
 package com.lumera.app.ui.details
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.lumera.app.ui.components.isPhoneUi
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -330,8 +334,8 @@ fun DetailsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(500.dp)
-                    .padding(start = 48.dp, end = 48.dp, top = 60.dp, bottom = 24.dp)
+                    .then(if (isPhoneUi()) Modifier.heightIn(min = 480.dp) else Modifier.height(500.dp))
+                    .padding(start = if (isPhoneUi()) 16.dp else 48.dp, end = if (isPhoneUi()) 16.dp else 48.dp, top = 60.dp, bottom = 24.dp)
                     .onFocusChanged { heroHasFocus = it.hasFocus },
                 verticalArrangement = Arrangement.Bottom
             ) {
@@ -494,7 +498,7 @@ fun DetailsScreen(
 
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.onPreviewKeyEvent { event ->
+                        modifier = (if (isPhoneUi()) Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()) else Modifier).onPreviewKeyEvent { event ->
                             if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                                 // Redirect focus to the Play button before the system
                                 // resolves the Down target, so the below-hero content
@@ -560,7 +564,7 @@ fun DetailsScreen(
                 } else {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.onPreviewKeyEvent { event ->
+                        modifier = (if (isPhoneUi()) Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()) else Modifier).onPreviewKeyEvent { event ->
                             if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                                 firstButtonFocusRequester.requestFocus()
                             }
@@ -896,7 +900,7 @@ private fun ExpandableIconButton(
     val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = MaterialTheme.colorScheme.primary
 
-    val showText = isFocused
+    val showText = isPhoneUi() || isFocused
 
     // Estimate expanded width: icon(18) + padding(12+12) + gap(8) + text
     // ~8dp per uppercase character, minimum 110dp to fit short labels like RESUME/WATCHED

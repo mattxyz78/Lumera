@@ -1007,9 +1007,10 @@ class MainActivity : ComponentActivity() {
                         val settingsEntryRequester = remember { FocusRequester() }
                         val watchlistEntryRequester = remember { FocusRequester() }
 
-                        // STATE CHANGE TRIGGER:
+                        val phoneUi = com.lumera.app.ui.components.isPhoneUi()
+                        // TV focus requests target controls that handheld layouts replace.
                         LaunchedEffect(currentNav, activeView) {
-                            if (activeView != "menu") return@LaunchedEffect
+                            if (phoneUi || activeView != "menu") return@LaunchedEffect
                             when(currentNav) {
                                 // HomeScreen requests focus itself once data is ready.
                                 // Avoid requesting early into the loading placeholder, which can
@@ -1043,9 +1044,9 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Focus restoration after navPosition change (Crossfade animation)
-                        val navPosition = currentProfile?.navPosition ?: "left"
+                        val navPosition = if (com.lumera.app.ui.components.isPhoneUi()) "top" else currentProfile?.navPosition ?: "left"
                         LaunchedEffect(navPosition) {
-                            if (activeView == "menu" && currentNav == NavDestination.Settings) {
+                            if (!phoneUi && activeView == "menu" && currentNav == NavDestination.Settings) {
                                 delay(450) // Wait for Crossfade (400ms) + buffer
                                 settingsEntryRequester.requestFocus()
                             }
@@ -1064,6 +1065,8 @@ class MainActivity : ComponentActivity() {
                                 val handleNavigate: (NavDestination) -> Unit = { destination ->
                                     if (destination == NavDestination.Exit) {
                                         finishAffinity()
+                                    } else if (currentNav == destination && phoneUi) {
+                                        // Tapping the selected phone tab needs no remote focus request.
                                     } else if (currentNav == destination) {
                                         // Already here - just focus content
                                         when(destination) {

@@ -16,6 +16,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -633,7 +635,11 @@ fun BasePlayerScaffold(
     ) {
         ComposePlayerSurface(
             renderSurface = renderSurface,
-            modifier = Modifier.fillMaxSize()
+            modifier = if (com.lumera.app.ui.components.isPhoneUi()) Modifier.fillMaxSize().clickable {
+                markInteraction()
+                showControls = !showControls
+                if (showControls) scheduleHideControls()
+            } else Modifier.fillMaxSize()
         )
 
         AnimatedVisibility(
@@ -1225,7 +1231,7 @@ private fun PlayerControlsOverlay(
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = if (com.lumera.app.ui.components.isPhoneUi()) Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()) else Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1311,6 +1317,13 @@ private fun ControlButton(
     buttonSize: Dp = 40.dp,
     iconSize: Dp = 20.dp
 ) {
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        androidx.compose.material3.IconButton(onClick = { onFocused?.invoke(); onClick() },
+            modifier = Modifier.size(48.dp).then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)) {
+            Icon(imageVector = icon, contentDescription = contentDescription, modifier = Modifier.size(iconSize))
+        }
+        return
+    }
     IconButton(
         onClick = onClick,
         modifier = Modifier
@@ -1351,6 +1364,22 @@ private fun FocusableSeekBar(
     focusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null
 ) {
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        var dragging by remember { mutableStateOf(false) }
+        var fraction by remember { mutableStateOf(0f) }
+        val progress = if (duration > 0) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f
+        androidx.compose.material3.Slider(
+            value = if (dragging) fraction else progress,
+            enabled = duration > 0,
+            onValueChange = { dragging = true; fraction = it; onFocused() },
+            onValueChangeFinished = {
+                onSeekBy((fraction * duration).toLong() - currentPosition)
+                dragging = false
+            },
+            modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        )
+        return
+    }
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 

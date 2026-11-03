@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Surface
+import com.lumera.app.ui.components.DeviceSurface as Surface
 import com.lumera.app.data.model.ProfileEntity
 import com.lumera.app.ui.profiles.ProfileAssets
 import androidx.compose.foundation.border
@@ -63,6 +63,10 @@ fun TopNavigationBar(
     onExit: () -> Unit = {},
     content: @Composable () -> Unit
 ) {
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        PhoneNavigation(currentDestination, currentProfile, topNavRequesters, onNavigate, onLogout, content)
+        return
+    }
     // 1. Define groups
     // Center: Search + Main Tabs
     val centerItems = listOf(

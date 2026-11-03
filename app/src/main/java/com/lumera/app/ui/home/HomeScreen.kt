@@ -95,6 +95,11 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        PhoneHomeScreen(state, tab, currentProfile?.id, onMovieClick, onViewMore,
+            onHubClick = { hub -> viewModel.openHub(hub) { title, items -> onViewMore(title, items, hub.categoryId) } })
+        return
+    }
     val layoutMode = currentProfile?.layoutFor(tab) ?: "simple"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
@@ -746,7 +751,7 @@ private fun resolveCinematicPreviewItem(
     return row.items.firstOrNull { it.id == itemToken }
 }
 
-private fun buildContinueWatchingItems(
+internal fun buildContinueWatchingItems(
     history: List<WatchHistoryEntity>,
     seriesNextUp: List<com.lumera.app.data.model.SeriesNextUpEntity> = emptyList()
 ): List<MetaItem> {

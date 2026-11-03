@@ -30,8 +30,8 @@ android {
         applicationId = "com.cinevo.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.2.2-cinevo-test"
+        versionCode = 14
+        versionName = "0.2.3-cinevo-test"
 
         // GitHub repository for auto-update system
         buildConfigField("String", "GITHUB_OWNER", "\"mattxyz78\"")

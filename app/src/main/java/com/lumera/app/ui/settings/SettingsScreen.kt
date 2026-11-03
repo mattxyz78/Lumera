@@ -6,6 +6,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.lumera.app.ui.components.isPhoneUi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -66,6 +69,7 @@ fun SettingsScreen(
     onContentFocusChanged: (Boolean) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val phone = isPhoneUi()
     var selectedSection by remember { mutableStateOf(SettingsSection.Personalization) }
     var displayedSection by remember { mutableStateOf(SettingsSection.Personalization) }
     var isContentFocused by remember { mutableStateOf(false) }
@@ -93,7 +97,7 @@ fun SettingsScreen(
     // 1. Side Nav (Always)
     // 2. Top Nav AND Screen is Focused (Handle = Open Nav/Go Back)
     // Disabled when Top Nav AND Screen NOT Focused (Nav is focused) -> Let Nav handle Close.
-    BackHandler(enabled = !isTopNav || isScreenFocused) {
+    BackHandler(enabled = !phone && (!isTopNav || isScreenFocused)) {
         if (isContentFocused) {
             itemRequesters[selectedSection]?.requestFocus()
         } else {
@@ -103,17 +107,17 @@ fun SettingsScreen(
     
     // Animated padding values for smooth transition when nav mode changes
     val rowStartPadding by animateDpAsState(
-        targetValue = if (isTopNav) 0.dp else 80.dp,
+        targetValue = if (phone || isTopNav) 0.dp else 80.dp,
         animationSpec = androidx.compose.animation.core.tween(300),
         label = "rowStartPadding"
     )
     val colTopPadding by animateDpAsState(
-        targetValue = if (isTopNav) 70.dp else 40.dp,
+        targetValue = if (phone) 8.dp else if (isTopNav) 70.dp else 40.dp,
         animationSpec = androidx.compose.animation.core.tween(300),
         label = "colTopPadding"
     )
     val contentTopPadding by animateDpAsState(
-        targetValue = if (isTopNav) 70.dp else 40.dp,
+        targetValue = if (phone) 8.dp else if (isTopNav) 70.dp else 40.dp,
         animationSpec = androidx.compose.animation.core.tween(300),
         label = "contentTopPadding"
     )
@@ -135,8 +139,8 @@ fun SettingsScreen(
                 .padding(start = rowStartPadding)
         ) {
 
-        // --- LEFT SIDEBAR ---
-        Column(
+        // --- LEFT SIDEBAR (TV) ---
+        if (!phone) Column(
             modifier = Modifier
                 .weight(0.28f)
                 .fillMaxHeight()
@@ -242,7 +246,17 @@ fun SettingsScreen(
                 .onFocusChanged { if (it.hasFocus) { isContentFocused = true; onContentFocusChanged(true) } }
         ) {
             // INCREASED PADDING: Gutter 64dp (Sidebar ends at weight 0.28, this starts at 0 without extra padding logic, so we add start padding here)
-            Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 64.dp, end = 80.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = if (phone) 16.dp else 64.dp, end = if (phone) 16.dp else 80.dp)) {
+                if (phone) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSection.entries.forEach { section ->
+                        FilterChip(selected = displayedSection == section, onClick = {
+                            selectedSection = section
+                            displayedSection = section
+                        }, label = { Text(section.label) },
+                            modifier = Modifier.focusRequester(itemRequesters.getValue(section))
+                                .then(if (section == selectedSection) Modifier.focusRequester(entryRequester) else Modifier))
+                    }
+                }
                 AnimatedContent(
                     targetState = displayedSection,
                     transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },

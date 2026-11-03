@@ -39,6 +39,20 @@ fun WatchlistScreen(
     val movies by viewModel.movieItems.collectAsState()
     val series by viewModel.seriesItems.collectAsState()
 
+    // Poster resolution also runs in the phone layout.
+    LaunchedEffect(movies) { movies.forEach { viewModel.resolvePosterIfNeeded(it) } }
+    LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
+
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
+            item { com.lumera.app.ui.home.PhoneContentRow("Films", movies, onMovieClick) }
+            item { com.lumera.app.ui.home.PhoneContentRow("TV series", series, onMovieClick) }
+            if (movies.isEmpty() && series.isEmpty()) item {
+                Text("Your watchlist is empty", modifier = Modifier.padding(24.dp))
+            }
+        }
+        return
+    }
     androidx.activity.compose.BackHandler { drawerRequester.requestFocus() }
 
     val upKeyDebouncer = remember { UpKeyDebouncer() }
@@ -76,9 +90,6 @@ fun WatchlistScreen(
         }
     }
 
-    // Resolve missing posters (e.g., items pulled from Trakt)
-    LaunchedEffect(movies) { movies.forEach { viewModel.resolvePosterIfNeeded(it) } }
-    LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
 
     val isTopNav = currentProfile?.navPosition == "top"
     val startPadding = if (isTopNav) 50.dp else 120.dp

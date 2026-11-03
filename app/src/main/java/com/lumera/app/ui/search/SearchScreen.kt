@@ -57,7 +57,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Surface
+import com.lumera.app.ui.components.DeviceSurface as Surface
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import com.lumera.app.data.model.stremio.MetaItem
 import com.lumera.app.data.model.ProfileEntity
@@ -93,6 +93,10 @@ fun SearchScreen(
     watchedIds: Set<String> = emptySet()
 ) {
     val state by viewModel.state.collectAsState()
+    if (com.lumera.app.ui.components.isPhoneUi()) {
+        PhoneSearchScreen(state, viewModel::onQueryChange, onMovieClick)
+        return
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // Internal Requesters

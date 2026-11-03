@@ -35,7 +35,7 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.compose.material3.Text
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
+import com.lumera.app.ui.components.DeviceSurface as Surface
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest

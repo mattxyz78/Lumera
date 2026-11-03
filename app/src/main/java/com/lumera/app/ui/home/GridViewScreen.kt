@@ -106,7 +106,9 @@ fun GridViewScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     
-    val startPadding = 50.dp
+    val phone = com.lumera.app.ui.components.isPhoneUi()
+    val columns = if (phone) ((androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 32) / 160).coerceAtLeast(2) else COLUMNS
+    val startPadding = if (phone) 16.dp else 50.dp
     
     // Header height for pivot calculation
     val headerHeight = 48.dp
@@ -231,11 +233,11 @@ fun GridViewScreen(
         // ══════════════════════════════════════════════════════════════
         CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(COLUMNS),
+                columns = GridCells.Fixed(columns),
                 state = gridState,
                 contentPadding = PaddingValues(
                     start = startPadding,
-                    end = 50.dp,
+                    end = if (phone) 16.dp else 50.dp,
                     top = headerHeight + 8.dp, // Start below header
                     bottom = 78.dp
                 ),
@@ -277,12 +279,12 @@ fun GridViewScreen(
                                     when (keyEvent.key) {
                                         // Block UP navigation on first row
                                         Key.DirectionUp -> {
-                                            if (index < COLUMNS) {
+                                            if (index < columns) {
                                                 pendingDirectionalTargetIndex = null
                                                 backIconRequester.requestFocus()
                                                 return@onPreviewKeyEvent true
                                             }
-                                            val targetIndex = index - COLUMNS
+                                            val targetIndex = index - columns
                                             val targetRequester = cardRequesters[targetIndex]
                                             if (targetRequester != null) {
                                                 pendingDirectionalTargetIndex = null
@@ -295,7 +297,7 @@ fun GridViewScreen(
                                             }
                                         }
                                         Key.DirectionDown -> {
-                                            val targetIndex = index + COLUMNS
+                                            val targetIndex = index + columns
                                             if (targetIndex >= items.size) {
                                                 pendingDirectionalTargetIndex = null
                                                 return@onPreviewKeyEvent true
@@ -314,7 +316,7 @@ fun GridViewScreen(
                                         // Block LEFT navigation on first column (no exit on left key)
                                         Key.DirectionLeft -> {
                                             pendingDirectionalTargetIndex = null
-                                            if (index % COLUMNS == 0) {
+                                            if (index % columns == 0) {
                                                 return@onPreviewKeyEvent true
                                             }
                                         }
@@ -386,7 +388,7 @@ fun GridViewScreen(
                     .padding(
                         start = startPadding,
                         top = 10.dp,
-                        end = 50.dp,
+                        end = if (phone) 16.dp else 50.dp,
                         bottom = 0.dp
                     ),
                 verticalAlignment = Alignment.CenterVertically
