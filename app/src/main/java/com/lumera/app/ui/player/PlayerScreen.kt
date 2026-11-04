@@ -151,7 +151,7 @@ fun PlayerScreen(
                 val state = playbackController.uiState.value
                 val pos = state.positionMs.coerceAtLeast(0L)
                 val dur = state.durationMs.takeIf { it > 0L }
-                viewModel.saveProgress(
+                if (state.errorMessage.isNullOrBlank() && state.isReady) viewModel.saveProgress(
                     id = movieId,
                     type = mediaType,
                     title = title,

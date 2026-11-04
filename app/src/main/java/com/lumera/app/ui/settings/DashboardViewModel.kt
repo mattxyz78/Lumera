@@ -52,6 +52,7 @@ sealed interface DialogState {
     data class RenameCategory(val config: CatalogConfigEntity, val currentName: String) : DialogState
     data class LayoutSettings(val config: CatalogConfigEntity) : DialogState
     data class AddToTab(val tab: String) : DialogState
+    data class AddGenre(val tab: String) : DialogState
     data object CreateHub : DialogState
     data class ManageHub(val hubItem: EditorListItem.HubRowItem) : DialogState
     data class EditHub(val hubItem: EditorListItem.HubRowItem) : DialogState
@@ -61,7 +62,9 @@ sealed interface DialogState {
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val addonRepository: com.lumera.app.data.repository.AddonRepository,
+    private val coordinator: com.lumera.app.data.profile.ProfileRuntimeCoordinator
 ) : ViewModel() {
 
     private fun persistProfileState() {
@@ -74,7 +77,59 @@ class DashboardViewModel @Inject constructor(
     private val _hubRows = MutableStateFlow<List<HubRowWithItems>>(emptyList())
     val hubRows: StateFlow<List<HubRowWithItems>> = _hubRows
 
+    private val _genreCatalogs = MutableStateFlow<List<com.lumera.app.data.repository.AddonRepository.DiscoverCatalog>>(emptyList())
+    val genreCatalogs: StateFlow<List<com.lumera.app.data.repository.AddonRepository.DiscoverCatalog>> = _genreCatalogs
+    private val _genreError = MutableStateFlow<String?>(null)
+    val genreError: StateFlow<String?> = _genreError
+    private val _addingGenre = MutableStateFlow(false)
+    val addingGenre: StateFlow<Boolean> = _addingGenre
+
+    fun addGenreRow(catalog: com.lumera.app.data.repository.AddonRepository.DiscoverCatalog, genre: String, screen: String, onAdded: () -> Unit) {
+        if (_addingGenre.value) return
+        val owner = coordinator.session ?: return
+        _addingGenre.value = true
+        _genreError.value = null
+        viewModelScope.launch {
+            try {
+                val saved = coordinator.forSession(owner) {
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        require(genre.isNotBlank() && catalog.supportsGenre && (catalog.genres.isEmpty() || genre in catalog.genres)) { "Choose a genre offered by this source." }
+                        require(dao.getAddon(catalog.transportUrl)?.isEnabled == true) { "The source is no longer enabled." }
+                        val id = "${catalog.transportUrl}/${catalog.type}/${catalog.catalogId}/genre/${java.net.URLEncoder.encode(genre, "UTF-8")}"
+                        val existing = dao.getCatalogConfig(id)
+                        val order = (getEditorItems(screen).maxOfOrNull { it.order } ?: -1) + 1
+                        val row = existing ?: CatalogConfigEntity(uniqueId = id,
+                            transportUrl = catalog.transportUrl, addonName = catalog.addonName,
+                            catalogType = catalog.type, catalogId = catalog.catalogId, catalogName = catalog.catalogName,
+                            genre = genre, customTitle = "$genre — ${if (catalog.type == "series") "TV series" else "Films"}")
+                        val updated = when (screen) {
+                            "home" -> if (row.showInHome) row else row.copy(showInHome = true, homeOrder = order)
+                            "movies" -> if (row.showInMovies) row else row.copy(showInMovies = true, moviesOrder = order)
+                            "series" -> if (row.showInSeries) row else row.copy(showInSeries = true, seriesOrder = order)
+                            else -> error("Unknown home-screen tab")
+                        }
+                        dao.saveCatalogConfig(updated)
+                    }
+                    true
+                }
+                if (saved == true) {
+                    profileConfigurationManager.saveActiveRuntimeState()
+                    onAdded()
+                } else _genreError.value = "Profile changed. Open the editor again."
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _genreError.value = "Could not add this genre. Check the source and try again."
+            } finally { _addingGenre.value = false }
+        }
+    }
+
     init {
+        viewModelScope.launch {
+            dao.getAllAddons().collect {
+                _genreCatalogs.value = addonRepository.getDiscoverCatalogs().filter { it.supportsGenre }
+            }
+        }
         viewModelScope.launch {
             dao.getAllCatalogConfigs().collect { list ->
                 _configs.value = list

@@ -47,9 +47,7 @@ class AddonRepository @Inject constructor(
      */
     suspend fun fetchNextCatalogPage(baseUrl: String, skip: Int): List<MetaItem> = withContext(Dispatchers.IO) {
         try {
-            val url = if (skip == 0) baseUrl else {
-                baseUrl.replace(".json", "/skip=$skip.json")
-            }
+            val url = CatalogUrls.page(baseUrl, skip)
             withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize()
         } catch (e: Exception) { emptyList() }
     }
@@ -97,7 +95,8 @@ class AddonRepository @Inject constructor(
         val catalogId: String,
         val catalogName: String = "",
         val genres: List<String> = emptyList(),
-        val supportsSkip: Boolean = false
+        val supportsSkip: Boolean = false,
+        val supportsGenre: Boolean = genres.isNotEmpty()
     )
 
     suspend fun getDiscoverCatalogs(): List<DiscoverCatalog> = withContext(Dispatchers.IO) {
@@ -131,6 +130,7 @@ class AddonRepository @Inject constructor(
                     catalogId = catalog.id,
                     catalogName = catalog.name,
                     genres = genres,
+                    supportsGenre = catalog.extra?.any { it.name == "genre" } == true,
                     supportsSkip = supportsSkip
                 ))
             }
@@ -197,7 +197,7 @@ class AddonRepository @Inject constructor(
             val addon = addonMap[config.transportUrl] ?: return@mapNotNull null
             async {
                 try {
-                    val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
+                    val url = CatalogUrls.catalog(config.transportUrl, config.catalogType, config.catalogId, config.genre)
                     // Fetch only the first page for fast initial load
                     val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (e: Exception) { emptyList() }
                     if (rawMetas.isNotEmpty()) {
@@ -242,7 +242,7 @@ class AddonRepository @Inject constructor(
         if (!addon.isEnabled) return@withContext null
 
         try {
-            val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
+            val url = CatalogUrls.catalog(config.transportUrl, config.catalogType, config.catalogId, config.genre)
             val metas = try {
                 withTimeout(timeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize()
             } catch (_: Exception) {

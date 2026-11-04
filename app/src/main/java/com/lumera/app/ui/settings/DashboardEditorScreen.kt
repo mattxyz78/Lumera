@@ -665,10 +665,13 @@ fun DashboardEditorScreen(
                 onDismissRequest = { dialogState = DialogState.None },
                 title = "Add to ${state.tab.uppercase()}"
             ) {
+                VoidButton("Add genre row", { dialogState = DialogState.AddGenre(state.tab) },
+                    Modifier.fillMaxWidth(), focusRequester = focusRequester)
+                Spacer(Modifier.height(16.dp))
                 if (availableToAdd.isEmpty()) {
                     Text("No hidden items found.", color = Color.Gray)
                     Spacer(Modifier.height(24.dp))
-                    VoidButton("Close", { dialogState = DialogState.None }, Modifier.fillMaxWidth(), focusRequester = focusRequester)
+                    VoidButton("Close", { dialogState = DialogState.None }, Modifier.fillMaxWidth())
                 } else {
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 300.dp),
@@ -688,13 +691,29 @@ fun DashboardEditorScreen(
                                     dialogState = DialogState.None
                                     showSnackbar("Added to $tabLabel")
                                 },
-                                focusRequester = if (index == 0) focusRequester else null
+                                focusRequester = null
                             )
                         }
                     }
                     Spacer(Modifier.height(16.dp))
                     VoidButton("Close", { dialogState = DialogState.None }, Modifier.fillMaxWidth())
                 }
+            }
+        }
+
+        is DialogState.AddGenre -> {
+            val catalogs by viewModel.genreCatalogs.collectAsState()
+            val adding by viewModel.addingGenre.collectAsState()
+            val error by viewModel.genreError.collectAsState()
+            key(currentProfile?.id) {
+            AddGenreRowDialog(catalogs = catalogs, adding = adding, error = error,
+                onDismiss = { if (!adding) dialogState = DialogState.None },
+                onAdd = { catalog, genre ->
+                    viewModel.addGenreRow(catalog, genre, state.tab) {
+                        dialogState = DialogState.None
+                        showSnackbar("Genre row added")
+                    }
+                })
             }
         }
 

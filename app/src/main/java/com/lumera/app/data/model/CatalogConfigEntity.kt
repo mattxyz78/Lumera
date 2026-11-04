@@ -25,5 +25,6 @@ data class CatalogConfigEntity(
 
     val isInfiniteLoopEnabled: Boolean = false,  // Default: Standard linear scrolling (Grid View)
     val visibleItemCount: Int = 15,              // Only used when Grid View is enabled
-    val isInfiniteScrollingEnabled: Boolean = true  // Only used when Grid View is enabled; loops at View More
+    val isInfiniteScrollingEnabled: Boolean = true,  // Only used when Grid View is enabled; loops at View More
+    val genre: String? = null // Optional provider genre; null retains the original catalogue.
 )

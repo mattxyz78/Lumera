@@ -29,6 +29,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import com.lumera.app.data.player.PlaybackSeekPolicy
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -201,7 +202,7 @@ class ExoPlayerBackend(
     private var sourcePreparedElapsedMs: Long = 0L
     private var ioAutoRetrySourceId: String? = null
     private var ioAutoRetryCountForCurrentSource: Int = 0
-    private var hasRetriedCurrentSourceAfter416: Boolean = false
+    private var seekRevision = 0L
     private var pendingHintTrackRefresh: Boolean = false
     private var hintTrackRefreshJob: Job? = null
     private var pendingStartPositionMs: Long = 0L
@@ -260,7 +261,7 @@ class ExoPlayerBackend(
                             if (isTorrentStream) SeekParameters.NEXT_SYNC
                             else SeekParameters.CLOSEST_SYNC
                         )
-                        p.seekTo(pendingSeekMs)
+                        p.seekTo(PlaybackSeekPolicy.target(pendingSeekMs, p.duration))
                     }
                 }
                 if (pendingHintTrackRefresh) {
@@ -300,7 +301,6 @@ class ExoPlayerBackend(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            if (retryFromStartAfter416(error)) return
             if (attemptAutoRetryFromIoError(error)) return
             // Parsing errors near the end of a stream are common with some sources.
             // Treat them as playback completion instead of showing an error.
@@ -310,7 +310,9 @@ class ExoPlayerBackend(
             }
             _uiState.update {
                 it.copy(
-                    errorMessage = error.errorCodeName.ifBlank { error.message ?: "Playback error" },
+                    errorMessage = playbackErrorMessage(error),
+                    isPlaying = false,
+                    isReady = false,
                     isBuffering = false
                 )
             }
@@ -538,7 +540,8 @@ class ExoPlayerBackend(
             if (isTorrentStream) SeekParameters.NEXT_SYNC
             else SeekParameters.CLOSEST_SYNC
         )
-        player.seekTo(positionMs.coerceAtLeast(0L))
+        seekRevision++
+        player.seekTo(PlaybackSeekPolicy.target(positionMs, player.duration))
         updateProgressState()
     }
 
@@ -549,8 +552,8 @@ class ExoPlayerBackend(
         player.setSeekParameters(
             if (deltaMs >= 0L) SeekParameters.NEXT_SYNC else SeekParameters.PREVIOUS_SYNC
         )
-        val duration = player.duration.takeIf { it > 0L } ?: Long.MAX_VALUE
-        val target = (player.currentPosition + deltaMs).coerceIn(0L, duration)
+        val target = PlaybackSeekPolicy.relativeTarget(player.currentPosition, deltaMs, player.duration)
+        seekRevision++
         player.seekTo(target)
         updateProgressState()
     }
@@ -896,7 +899,6 @@ class ExoPlayerBackend(
         if (resetSourceRetryBudget) {
             ioAutoRetrySourceId = source.id
             ioAutoRetryCountForCurrentSource = 0
-            hasRetriedCurrentSourceAfter416 = false
         }
 
         audioSwitchRecoveryJob?.cancel()
@@ -1221,7 +1223,9 @@ class ExoPlayerBackend(
     private fun updateProgressState() {
         val player = exoPlayer ?: return
         val duration = player.duration.takeIf { it > 0L } ?: 0L
-        val position = player.currentPosition.coerceAtLeast(0L)
+        // Retain the intended timestamp while reconnecting and preparing metadata.
+        val position = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
         val buffered = player.bufferedPosition.coerceAtLeast(0L)
         val speed = player.playbackParameters.speed
 
@@ -1257,11 +1261,13 @@ class ExoPlayerBackend(
         }
 
         val source = _sourceOptions.value.firstOrNull { option -> option.id == sourceId } ?: return false
-        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
         val shouldAutoPlay = player.playWhenReady
 
         ioAutoRetryCountForCurrentSource += 1
         val tokenAtRetry = loadToken
+        val seekRevisionAtRetry = seekRevision
         val retryDelay = if (isAudioError) AUDIO_AUTO_RETRY_DELAY_MS else IO_AUTO_RETRY_DELAY_MS
         _uiState.update {
             it.copy(
@@ -1272,7 +1278,7 @@ class ExoPlayerBackend(
 
         scope.launch {
             delay(retryDelay)
-            if (released || loadToken != tokenAtRetry) return@launch
+            if (released || loadToken != tokenAtRetry || seekRevision != seekRevisionAtRetry) return@launch
             prepareSource(
                 source = source,
                 startPositionMs = resumePosition,
@@ -1309,6 +1315,8 @@ class ExoPlayerBackend(
             return true
         }
 
+        val status = httpResponseCode(error)
+        if (status != null && !PlaybackSeekPolicy.isRetryableHttpStatus(status)) return false
         if (!codeName.startsWith("ERROR_CODE_IO_")) return false
         if (codeName == "ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED") return false
         if (codeName == "ERROR_CODE_IO_NO_PERMISSION") return false
@@ -1316,39 +1324,25 @@ class ExoPlayerBackend(
         return true
     }
 
-    private fun retryFromStartAfter416(error: PlaybackException): Boolean {
-        if (hasRetriedCurrentSourceAfter416) return false
-        val httpCause = error.cause as? HttpDataSource.InvalidResponseCodeException ?: return false
-        if (httpCause.responseCode != 416) return false
-
-        hasRetriedCurrentSourceAfter416 = true
-        val player = exoPlayer ?: return false
-        val source = _sourceOptions.value.firstOrNull { it.id == currentSourceId } ?: return false
-
-        _uiState.update { it.copy(errorMessage = null, isBuffering = true) }
-
-        runCatching {
-            val mediaItem = MediaItem.Builder()
-                .setUri(source.url)
-                .build()
-            val mediaSource = createMediaSource(source.url, mediaItem)
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaSource(mediaSource)
-            pendingStartPositionMs = 0L
-            player.seekTo(0L)
-            player.prepare()
-            player.playWhenReady = true
-        }.onFailure { e ->
-            _uiState.update {
-                it.copy(
-                    errorMessage = e.message ?: "Playback error",
-                    isBuffering = false
-                )
+    private fun httpResponseCode(error: Throwable): Int? {
+        // Media3 can wrap the HTTP exception in a source/loader exception.
+        var cause: Throwable? = error
+        repeat(16) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                return (cause as HttpDataSource.InvalidResponseCodeException).responseCode
             }
+            cause = cause?.cause ?: return null
         }
-        return true
+        return null
     }
+
+    private fun playbackErrorMessage(error: PlaybackException): String =
+        when (val status = httpResponseCode(error)) {
+            416 -> "This source rejected the playback position (HTTP 416). Try another source."
+            401, 403 -> "This source rejected access (HTTP $status). Check the service or try another source."
+            null -> error.errorCodeName.ifBlank { "Playback error" }
+            else -> "Stream request failed (HTTP $status). Try another source."
+        }
 
     private fun scheduleAudioSwitchRecovery(player: ExoPlayer) {
         audioSwitchRecoveryJob?.cancel()
