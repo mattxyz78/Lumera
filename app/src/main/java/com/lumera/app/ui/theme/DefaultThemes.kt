@@ -8,6 +8,19 @@ import com.lumera.app.data.model.ThemeEntity
  */
 object DefaultThemes {
 
+    val MATTFLIX = ThemeEntity(
+        id = "mattflix",
+        name = "Mattflix",
+        primaryColor = 0xFFE50914,
+        backgroundColor = 0xFF141414,
+        surfaceColor = 0xFF181818,
+        textColor = 0xFFFFFFFF,
+        textMutedColor = 0xFFB3B3B3,
+        errorColor = 0xFFFF5252,
+        isBuiltIn = true,
+        category = "dark"
+    )
+
     val VOID = ThemeEntity(
         id = "void",
         name = "Void",
@@ -115,7 +128,7 @@ object DefaultThemes {
     /**
      * All built-in themes in display order.
      */
-    val ALL = listOf(VOID, NEON, OCEAN, SUNSET, EMERALD, AMBER, CRIMSON, SLATE)
+    val ALL = listOf(VOID, MATTFLIX, NEON, OCEAN, SUNSET, EMERALD, AMBER, CRIMSON, SLATE)
 
     /**
      * Get a built-in theme by ID, returns VOID as fallback.

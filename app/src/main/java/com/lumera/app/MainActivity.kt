@@ -103,7 +103,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.media.MediaPlayer
 import com.lumera.app.data.local.AddonDao
 import com.lumera.app.data.profile.ProfileConfigurationManager
 import kotlinx.coroutines.runBlocking
@@ -699,10 +698,7 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var streamSortingService: StreamSortingService
 
-    private var splashPlayer: MediaPlayer? = null
     private var splashOverlay: android.view.View? = null
-    private var splashIndicator: android.view.View? = null
-    private var splashPausedAtLogo = false
     private var splashAppReady = false
     private val _splashFinished = mutableStateOf(false)
 
@@ -732,93 +728,24 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onSplashAppReady() {
-        if (splashAppReady) return
         splashAppReady = true
-        val player = splashPlayer ?: return
-        if (splashPausedAtLogo) {
-            splashPausedAtLogo = false
-            splashIndicator?.visibility = android.view.View.GONE
-            player.start()
-        }
     }
 
     private fun dismissSplash() {
         splashOverlay?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
         splashOverlay = null
-        splashIndicator = null
-        splashPlayer?.release()
-        splashPlayer = null
         _splashFinished.value = true
     }
 
     private fun attachSplashOverlay() {
-        val player = splashPlayer ?: return
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        val density = resources.displayMetrics.density
-
-        val container = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(android.graphics.Color.BLACK)
-        }
-
-        val surfaceView = android.view.SurfaceView(this)
-        container.addView(surfaceView, android.widget.FrameLayout.LayoutParams(
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-
-        val indicator = android.widget.ProgressBar(this).apply {
-            indeterminateTintList =
-                android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
-            visibility = android.view.View.GONE
-        }
-        container.addView(indicator, android.widget.FrameLayout.LayoutParams(
-            (36 * density).toInt(), (36 * density).toInt()
-        ).apply {
-            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
-            bottomMargin = (80 * density).toInt()
-        })
-        splashIndicator = indicator
-
-        player.setOnCompletionListener { dismissSplash() }
-
-        surfaceView.holder.addCallback(object : android.view.SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                player.setDisplay(holder)
-                player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-                player.start()
-
-                val pollRunnable = object : Runnable {
-                    override fun run() {
-                        try {
-                            if (player.isPlaying && player.currentPosition >= SPLASH_PAUSE_MS) {
-                                if (splashAppReady) {
-                                    // App loaded before pause point — let video play through
-                                } else {
-                                    player.pause()
-                                    splashPausedAtLogo = true
-                                    indicator.visibility = android.view.View.VISIBLE
-                                }
-                            } else if (player.isPlaying) {
-                                handler.postDelayed(this, 50)
-                            }
-                        } catch (_: IllegalStateException) { /* released */ }
-                    }
-                }
-                handler.postDelayed(pollRunnable, 50)
-            }
-
-            override fun surfaceChanged(
-                h: android.view.SurfaceHolder, f: Int, w: Int, height: Int
-            ) {}
-
-            override fun surfaceDestroyed(h: android.view.SurfaceHolder) {}
-        })
-
-        addContentView(container, android.view.ViewGroup.LayoutParams(
+        val overlay = com.lumera.app.ui.splash.CinevoSplashView(
+            this, isAppReady = { splashAppReady }, onFinished = { dismissSplash() }
+        )
+        splashOverlay = overlay
+        addContentView(overlay, android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             android.view.ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        splashOverlay = container
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -848,21 +775,6 @@ class MainActivity : ComponentActivity() {
         }?.splashEnabled ?: true
         val showSplash = splashEnabledInProfile && safeState?.getBoolean(KEY_SPLASH_SHOWN) != true
         if (!showSplash) _splashFinished.value = true
-
-        if (showSplash) {
-            // Pre-prepare splash video — synchronous but near-instant for a small raw resource.
-            splashPlayer = try {
-                MediaPlayer().apply {
-                    resources.openRawResourceFd(R.raw.splash_video).use { afd ->
-                        setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                    }
-                    isLooping = false
-                    prepare()
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
 
         setContent {
 
@@ -2370,7 +2282,6 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val SPLASH_PAUSE_MS = 4500
         private const val KEY_SPLASH_SHOWN = "splash_shown"
     }
 }

@@ -56,7 +56,7 @@ fun LumeraTheme(
         secondary = primaryColor,
         background = backgroundColor,
         surface = surfaceColor,
-        onPrimary = Color.Black,
+        onPrimary = if (theme.id == DefaultThemes.MATTFLIX.id) Color.White else Color.Black,
         onBackground = textColor,
         onSurface = textColor,
         error = errorColor
@@ -68,7 +68,7 @@ fun LumeraTheme(
         secondary = primaryColor,
         background = backgroundColor,
         surface = surfaceColor,
-        onPrimary = Color.Black,
+        onPrimary = if (theme.id == DefaultThemes.MATTFLIX.id) Color.White else Color.Black,
         onSurface = textColor,
         error = errorColor
     )
