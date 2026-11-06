@@ -116,11 +116,16 @@ fun ProfileScreen(
                         onNext = { viewModel.setWizardName(it) },
                         onCancel = { viewModel.cancelWizard() }
                     )
-                    2 -> WizardAvatarStep(
+                    2 -> WizardAgeGroupStep(
+                        selected = viewModel.tempAgeGroup,
+                        onSelect = { viewModel.setWizardAgeGroup(it) },
+                        onBack = { viewModel.goBackStep() }
+                    )
+                    3 -> WizardAvatarStep(
                         onNext = { viewModel.setWizardAvatar(it) },
                         onBack = { viewModel.goBackStep() }
                     )
-                    3 -> WizardThemeStep(
+                    4 -> WizardThemeStep(
                         onFinish = { viewModel.setWizardTheme(it) },
                         onBack = { viewModel.goBackStep() }
                     )

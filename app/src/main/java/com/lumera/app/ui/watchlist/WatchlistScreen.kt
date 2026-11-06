@@ -34,7 +34,7 @@ fun WatchlistScreen(
     drawerRequester: FocusRequester,
     onMovieClick: (MetaItem) -> Unit,
     watchedIds: Set<String> = emptySet(),
-    viewModel: WatchlistViewModel = hiltViewModel()
+    viewModel: WatchlistViewModel = hiltViewModel(key = "watchlist_${currentProfile?.id}_${currentProfile?.ageGroup}")
 ) {
     val movies by viewModel.movieItems.collectAsState()
     val series by viewModel.seriesItems.collectAsState()

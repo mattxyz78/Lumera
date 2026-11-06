@@ -28,7 +28,8 @@ class MainViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
-    private val coordinator: ProfileRuntimeCoordinator
+    private val coordinator: ProfileRuntimeCoordinator,
+    private val parentPin: com.lumera.app.data.parental.ParentPin
 ) : ViewModel() {
 
     private val _activeProfile = MutableStateFlow<ProfileEntity?>(null)
@@ -53,10 +54,13 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             transitionMutex.withLock {
                 try {
+                    val target = dao.getProfileById(id) ?: error("This profile no longer exists.")
+                    if (!parentPin.configured || !com.lumera.app.data.parental.AgeGroupPolicy.restricted(target.ageGroup)) {
+                        check(parentPin.authorize("Open adult profile")) { "Profile access cancelled." }
+                    }
                     connectionJob?.cancelAndJoin()
                     traktSyncJob?.cancelAndJoin()
                     profileJob?.cancelAndJoin()
-                    check(dao.getProfileById(id) != null) { "This profile no longer exists." }
                     profileConfigurationManager.switchRuntimeState(id)
                     activeProfileId = id
                     _activeProfile.value = dao.getProfileById(id)

@@ -95,7 +95,23 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
-    if (com.lumera.app.ui.components.isPhoneUi()) {
+    val phoneUi = com.lumera.app.ui.components.isPhoneUi()
+    if (com.lumera.app.data.parental.AgeGroupPolicy.restricted(currentProfile?.ageGroup) &&
+        !state.isLoading && state.loadedProfileId == currentProfile?.id &&
+        state.rows.all { it.items.isEmpty() } && state.heroRow?.items.isNullOrEmpty() &&
+        state.mixedRows.all { it is CategoryRow && it.items.isEmpty() } &&
+        state.history.isEmpty() && state.seriesNextUp.isEmpty()) {
+        if (!phoneUi) BackHandler { drawerRequester.requestFocus() }
+        Column(Modifier.fillMaxSize().padding(40.dp).focusRequester(entryRequester).focusable(),
+            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("No age-approved titles available", textAlign = TextAlign.Center)
+            Spacer(Modifier.height(12.dp))
+            Text("This profile hides titles above its age limit and titles without verified UK ratings. An adult can check the rating service key through the parent PIN screen and your add-ons in Settings.",
+                modifier = Modifier.widthIn(max = 600.dp), textAlign = TextAlign.Center)
+        }
+        return
+    }
+    if (phoneUi) {
         PhoneHomeScreen(state, tab, currentProfile?.id, onMovieClick, onViewMore,
             onHubClick = { hub -> viewModel.openHub(hub) { title, items -> onViewMore(title, items, hub.categoryId) } })
         return

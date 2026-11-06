@@ -20,8 +20,11 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     private val dao: AddonDao,
     private val traktScrobbleManager: TraktScrobbleManager,
-    private val coordinator: ProfileRuntimeCoordinator
+    private val coordinator: ProfileRuntimeCoordinator,
+    private val parentalAccess: com.lumera.app.data.parental.ParentalAccess
 ) : ViewModel() {
+
+    suspend fun allowed(type: String, id: String) = parentalAccess.allowed(type, id)
 
     fun captureSession(): ProfileSession? = coordinator.session
 

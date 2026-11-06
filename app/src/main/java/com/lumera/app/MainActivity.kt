@@ -698,6 +698,15 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var streamSortingService: StreamSortingService
 
+    @Inject lateinit var parentPin: com.lumera.app.data.parental.ParentPin
+
+    private var foregroundRefreshGeneration by mutableStateOf(0L)
+
+    override fun onRestart() {
+        super.onRestart()
+        foregroundRefreshGeneration = SystemClock.elapsedRealtime()
+    }
+
     private var splashOverlay: android.view.View? = null
     private var splashAppReady = false
     private val _splashFinished = mutableStateOf(false)
@@ -856,6 +865,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) { appUpdateManager.checkForUpdate() }
 
             LumeraTheme(theme = currentTheme) {
+                com.lumera.app.ui.parental.ParentPinDialog(parentPin)
                 CompositionLocalProvider(
                     LocalRoundCorners provides roundCorners,
                     LocalHubRoundCorners provides hubRoundCorners
@@ -1045,12 +1055,15 @@ class MainActivity : ComponentActivity() {
                                         content = {
                                             when (currentNav) {
                                                 NavDestination.Home, NavDestination.Movies, NavDestination.Series -> {
-                                                    val vm = hiltViewModel<HomeViewModel>()
+                                                    val vm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     val tab = if(currentNav == NavDestination.Home) "home" else if(currentNav == NavDestination.Movies) "movies" else "series"
                                                     val dashboardTab = DashboardTab.fromString(tab)
 
                                                     key(tab) {
-                                                        LaunchedEffect(tab, currentProfile?.id) { vm.loadScreen(tab, currentProfile) }
+                                                        LaunchedEffect(tab, currentProfile?.id, foregroundRefreshGeneration) {
+                                                            vm.refreshAfterReturn(foregroundRefreshGeneration)
+                                                            vm.loadScreen(tab, currentProfile)
+                                                        }
                                                         HomeScreen(
                                                             tab = dashboardTab,
                                                             viewModel = vm,
@@ -1083,7 +1096,7 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                                 NavDestination.Search -> {
-                                                    val searchHomeVm = hiltViewModel<HomeViewModel>()
+                                                    val searchHomeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     SearchScreen(
                                                         currentProfile = currentProfile,
                                                         watchedIds = searchHomeVm.state.collectAsState().value.watchedIds,
@@ -1146,7 +1159,7 @@ class MainActivity : ComponentActivity() {
                                                     mainViewModel.logout()
                                                 }
                                                 NavDestination.Watchlist -> {
-                                                    val watchlistHomeVm = hiltViewModel<HomeViewModel>()
+                                                    val watchlistHomeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     WatchlistScreen(
                                                         currentProfile = currentProfile,
                                                         entryRequester = watchlistEntryRequester,
@@ -1171,7 +1184,7 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                                 NavDestination.Settings -> {
-                                                    val homeVm = hiltViewModel<HomeViewModel>()
+                                                    val homeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     SettingsScreen(
                                                         currentProfile = currentProfile,
                                                         onBack = {
@@ -1198,12 +1211,15 @@ class MainActivity : ComponentActivity() {
                                         content = {
                                             when (currentNav) {
                                                 NavDestination.Home, NavDestination.Movies, NavDestination.Series -> {
-                                                    val vm = hiltViewModel<HomeViewModel>()
+                                                    val vm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     val tab = if(currentNav == NavDestination.Home) "home" else if(currentNav == NavDestination.Movies) "movies" else "series"
                                                     val dashboardTab = DashboardTab.fromString(tab)
 
                                                     key(tab) {
-                                                        LaunchedEffect(tab, currentProfile?.id) { vm.loadScreen(tab, currentProfile) }
+                                                        LaunchedEffect(tab, currentProfile?.id, foregroundRefreshGeneration) {
+                                                            vm.refreshAfterReturn(foregroundRefreshGeneration)
+                                                            vm.loadScreen(tab, currentProfile)
+                                                        }
                                                         HomeScreen(
                                                             tab = dashboardTab,
                                                             viewModel = vm,
@@ -1236,7 +1252,7 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                                 NavDestination.Search -> {
-                                                    val searchHomeVm = hiltViewModel<HomeViewModel>()
+                                                    val searchHomeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     SearchScreen(
                                                         currentProfile = currentProfile,
                                                         watchedIds = searchHomeVm.state.collectAsState().value.watchedIds,
@@ -1299,7 +1315,7 @@ class MainActivity : ComponentActivity() {
                                                     mainViewModel.logout()
                                                 }
                                                 NavDestination.Watchlist -> {
-                                                    val watchlistHomeVm = hiltViewModel<HomeViewModel>()
+                                                    val watchlistHomeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     WatchlistScreen(
                                                         currentProfile = currentProfile,
                                                         entryRequester = watchlistEntryRequester,
@@ -1324,7 +1340,7 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                                 NavDestination.Settings -> {
-                                                    val homeVm = hiltViewModel<HomeViewModel>()
+                                                    val homeVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                                                     SettingsScreen(
                                                         currentProfile = currentProfile,
                                                         onBack = {
@@ -1345,7 +1361,7 @@ class MainActivity : ComponentActivity() {
                                 } // Crossfade end
                                 } // Double-back Box end
                         } else if (view == "grid") {
-                            val gridVm = hiltViewModel<HomeViewModel>()
+                            val gridVm = hiltViewModel<HomeViewModel>(key = "home_${currentProfile?.id}_${currentProfile?.ageGroup}")
                             GridViewScreen(
                                 title = gridViewTitle,
                                 items = gridViewItems,
@@ -1480,7 +1496,7 @@ class MainActivity : ComponentActivity() {
                                         playerState.selectedPlayerSources = sourcePayload
                                         selectedVideoUrl = url
                                         when (currentProfile?.playerPreference) {
-                                            "external" -> launchExternalPlayer(this@MainActivity, url)
+                                            "external" -> if (com.lumera.app.data.parental.AgeGroupPolicy.restricted(currentProfile?.ageGroup)) activeView = "player" else launchExternalPlayer(this@MainActivity, url)
                                             "ask" -> playerState.showPlayerChoiceDialog = true
                                             else -> activeView = "player"
                                         }
@@ -2187,7 +2203,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onExternal = {
                                 playerState.showPlayerChoiceDialog = false
-                                launchExternalPlayer(this@MainActivity, selectedVideoUrl)
+                                if (com.lumera.app.data.parental.AgeGroupPolicy.restricted(currentProfile?.ageGroup)) activeView = "player"
+                                else launchExternalPlayer(this@MainActivity, selectedVideoUrl)
                             },
                             onDismiss = {
                                 playerState.showPlayerChoiceDialog = false

@@ -31,11 +31,11 @@ class WatchlistViewModel @Inject constructor(
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
 
     val movieItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType("movie")
-        .map { list -> list.map { it.toMetaItem() } }
+        .map { list -> repository.filterForProfile(list.map { it.toMetaItem() }) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val seriesItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType("series")
-        .map { list -> list.map { it.toMetaItem() } }
+        .map { list -> repository.filterForProfile(list.map { it.toMetaItem() }) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**

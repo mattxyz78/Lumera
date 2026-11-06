@@ -79,8 +79,8 @@ private val RESULT_POSTER_HEIGHT_TOP_NAV = 150.dp
 fun SearchScreen(
     entryRequester: FocusRequester, // Drawer -> Keyboard
     drawerRequester: FocusRequester, // Left -> Drawer
-    viewModel: SearchViewModel = hiltViewModel(),
     currentProfile: ProfileEntity?,
+    viewModel: SearchViewModel = hiltViewModel(key = "search_${currentProfile?.id}_${currentProfile?.ageGroup}"),
     onMovieClick: (MetaItem) -> Unit,
     onViewMore: (title: String, items: List<MetaItem>) -> Unit = { _, _ -> },
     moviesViewMoreRequester: FocusRequester = remember { FocusRequester() },

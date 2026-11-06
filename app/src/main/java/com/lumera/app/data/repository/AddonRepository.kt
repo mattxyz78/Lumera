@@ -24,20 +24,22 @@ import javax.inject.Singleton
 @Singleton
 class AddonRepository @Inject constructor(
     private val api: StremioApiService,
-    private val dao: AddonDao
+    private val dao: AddonDao,
+    private val parentalAccess: com.lumera.app.data.parental.ParentalAccess
 ) {
+    suspend fun filterForProfile(items: List<MetaItem>) = parentalAccess.filter(items)
     private val gson = Gson()
     private val MAX_CATALOG_PAGES = 30
 
     /** Filter out MetaItems where Gson injected null into non-null Kotlin fields */
-    private fun List<MetaItem>.sanitize(): List<MetaItem> = filter { item ->
+    private suspend fun List<MetaItem>.sanitize(): List<MetaItem> = parentalAccess.filter(filter { item ->
         @Suppress("SENSELESS_COMPARISON")
         item.id != null && item.name != null && item.type != null
-    }
+    })
     /** Validate a single MetaItem from getMeta() — returns null if Gson injected nulls */
     @Suppress("SENSELESS_COMPARISON")
-    private fun MetaItem?.sanitize(): MetaItem? =
-        this?.takeIf { it.id != null && it.name != null && it.type != null }
+    private suspend fun MetaItem?.sanitize(): MetaItem? =
+        this?.takeIf { it.id != null && it.name != null && it.type != null && parentalAccess.allowed(it.type, it.id) }
     private val CATALOG_TIMEOUT_MS = 10_000L // 10 seconds per catalog request
     private val STREAM_TIMEOUT_MS = 20_000L  // 20 seconds per stream request (torrent addons need more time)
 
@@ -317,6 +319,7 @@ class AddonRepository @Inject constructor(
     }
 
     suspend fun getStreams(type: String, id: String): List<Stream> = withContext(Dispatchers.IO) {
+        if (!parentalAccess.allowed(type, id)) return@withContext emptyList()
         val addons = dao.getAllAddons().firstOrNull()
             ?.filter { it.isEnabled && it.supportsStream }
             ?: emptyList()

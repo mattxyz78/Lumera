@@ -18,7 +18,8 @@ private const val TAG = "TmdbMetadataService"
 
 @Singleton
 class TmdbMetadataService @Inject constructor(
-    private val tmdbApi: TmdbApiService
+    private val tmdbApi: TmdbApiService,
+    private val parentalAccess: com.lumera.app.data.parental.ParentalAccess
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
 
@@ -260,7 +261,7 @@ class TmdbMetadataService @Inject constructor(
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val tmdbType = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
         val cacheKey = "$tmdbId:$tmdbType:$normalizedLanguage:recs"
-        recommendationsCache[cacheKey]?.let { return@withContext it }
+        recommendationsCache[cacheKey]?.let { return@withContext visible(it) }
 
         val numericId = tmdbId.toIntOrNull() ?: return@withContext emptyList()
 
@@ -310,7 +311,7 @@ class TmdbMetadataService @Inject constructor(
             }
 
             recommendationsCache[cacheKey] = items
-            items
+            visible(items)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch recommendations for $tmdbId: ${e.message}")
             emptyList()
@@ -326,7 +327,7 @@ class TmdbMetadataService @Inject constructor(
     ): List<TmdbMetaPreview> = withContext(Dispatchers.IO) {
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val cacheKey = "$collectionId:$normalizedLanguage:collection"
-        collectionCache[cacheKey]?.let { return@withContext it }
+        collectionCache[cacheKey]?.let { return@withContext visible(it) }
 
         try {
             val collection = tmdbApi.getCollectionDetails(collectionId, apiKey, normalizedLanguage).body()
@@ -347,7 +348,7 @@ class TmdbMetadataService @Inject constructor(
             }
 
             collectionCache[cacheKey] = items
-            items
+            visible(items)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch collection $collectionId: ${e.message}")
             emptyList()
@@ -363,7 +364,7 @@ class TmdbMetadataService @Inject constructor(
     ): TmdbPersonDetail? = withContext(Dispatchers.IO) {
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val cacheKey = "$personId:$normalizedLanguage"
-        personCache[cacheKey]?.let { return@withContext it }
+        personCache[cacheKey]?.let { return@withContext visiblePerson(it) }
 
         try {
             val (person, credits) = coroutineScope {
@@ -405,7 +406,7 @@ class TmdbMetadataService @Inject constructor(
                 tvCredits = tvCredits
             )
             personCache[cacheKey] = detail
-            detail
+            visiblePerson(detail)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch person detail: ${e.message}", e)
             null
@@ -590,12 +591,20 @@ class TmdbMetadataService @Inject constructor(
                     releaseInfo = year, rating = r.voteAverage
                 )
             } ?: emptyList()
-            Pair(items, resp?.totalPages ?: 1)
+            Pair(visible(items), resp?.totalPages ?: 1)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to discover $mediaType for $kind $entityId: ${e.message}")
             Pair(emptyList(), 1)
         }
     }
+
+    private suspend fun visible(items: List<TmdbMetaPreview>): List<TmdbMetaPreview> {
+        val ids = parentalAccess.filter(items.map { com.lumera.app.data.model.stremio.MetaItem(id = "tmdb:${it.tmdbId}", type = it.type, name = it.name) }).map { it.id to it.type }.toSet()
+        return items.filter { ("tmdb:${it.tmdbId}" to it.type) in ids }
+    }
+
+    private suspend fun visiblePerson(person: TmdbPersonDetail) = person.copy(
+        movieCredits = visible(person.movieCredits), tvCredits = visible(person.tvCredits))
 
     // ── Private helpers ──
 

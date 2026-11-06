@@ -205,6 +205,15 @@ class HomeViewModel @Inject constructor(
      * Invalidates the cached screen data, forcing a reload on next loadScreen() call.
      * Call this after making changes in the Dashboard Editor.
      */
+    private var lastForegroundGeneration = 0L
+
+    /** Invalidate once per return from the background, then use the usual profile load. */
+    fun refreshAfterReturn(generation: Long) {
+        if (generation <= lastForegroundGeneration) return
+        lastForegroundGeneration = generation
+        invalidate()
+    }
+
     fun invalidate() {
         pendingRowItems.clear()
         allFetchedRowIds.clear()
@@ -595,12 +604,14 @@ class HomeViewModel @Inject constructor(
             if (screenName == "home") {
                 launch {
                     dao.getWatchHistory().collect { history ->
-                        _state.update { it.copy(history = history) }
+                        val allowedIds = repository.filterForProfile(history.map { com.lumera.app.data.model.stremio.MetaItem(id = it.id, type = it.type, name = it.title) }).map { it.id }.toSet()
+                        _state.update { it.copy(history = history.filter { it.id in allowedIds }) }
                     }
                 }
                 launch {
                     dao.getActiveSeriesNextUp().collect { nextUp ->
-                        _state.update { it.copy(seriesNextUp = nextUp) }
+                        val allowedIds = repository.filterForProfile(nextUp.map { com.lumera.app.data.model.stremio.MetaItem(id = it.seriesId, type = "series", name = it.title) }).map { it.id }.toSet()
+                        _state.update { it.copy(seriesNextUp = nextUp.filter { it.seriesId in allowedIds }) }
                     }
                 }
             } else {

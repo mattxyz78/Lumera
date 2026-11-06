@@ -50,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -133,8 +134,16 @@ fun DetailsScreen(
     onTrailerClick: (youtubeKey: String, trailerName: String) -> Unit = { _, _ -> },
     isTrailerLoading: Boolean = false,
     trailerReturnToken: Int = 0,
-    viewModel: DetailsViewModel = hiltViewModel(key = "details_${type}_${id}")
+    policy: com.lumera.app.ui.parental.ContentPolicyViewModel = hiltViewModel(),
+    viewModel: DetailsViewModel = hiltViewModel(key = "details_${type}_${id}_${policy.sessionKey()}")
 ) {
+    val permitted by produceState<Boolean?>(null, type, id, policy.sessionKey()) { value = policy.allowed(type, id) }
+    if (permitted != true) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(if (permitted == null) "Checking UK age rating…" else "This title is unavailable for this age group or has no verified UK rating. Press Back.")
+        }
+        return
+    }
     LaunchedEffect(type, id) { viewModel.loadDetails(type, id, addonBaseUrl) }
 
     val state by viewModel.state.collectAsState()

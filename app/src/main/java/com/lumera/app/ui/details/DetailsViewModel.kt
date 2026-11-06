@@ -58,7 +58,8 @@ class DetailsViewModel @Inject constructor(
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
     private val traktSyncManager: TraktSyncManager,
-    private val coordinator: ProfileRuntimeCoordinator
+    private val coordinator: ProfileRuntimeCoordinator,
+    private val parentalAccess: com.lumera.app.data.parental.ParentalAccess
 ) : ViewModel() {
 
     /** Per-episode watch progress for the episodes sidebar. */
@@ -647,6 +648,10 @@ class DetailsViewModel @Inject constructor(
     ) {
         loadStreamsJob?.cancel()
         loadStreamsJob = viewModelScope.launch {
+            if (!parentalAccess.allowed(type, id)) {
+                _state.value = _state.value.copy(autoPlayStream = null, availableStreams = emptyList(), isLoadingStreams = false, sidebarState = SidebarState.Closed)
+                return@launch
+            }
             // Show immediate loading feedback:
             // - Show sources sidebar when user needs to pick manually
             // - Centered spinner when auto-resolve is expected (auto-select or remembered source)

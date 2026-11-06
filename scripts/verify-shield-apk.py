@@ -9,8 +9,8 @@ import shutil
 import subprocess
 
 EXPECTED_PACKAGE = "com.cinevo.tv.test"
-EXPECTED_CODE = "16"
-EXPECTED_VERSION = "0.2.5-cinevo-test"
+EXPECTED_CODE = "17"
+EXPECTED_VERSION = "0.2.6-cinevo-test"
 EXPECTED_CERT = "c9334a9e5eb9d2254dafa2662b3062ff82396672bd1369f91b7486b87b63ed3c"
 
 
@@ -49,7 +49,7 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     for previous in destination.glob("*.apk"):
         previous.unlink()
-    output = destination / "Cinevo-Test-v0.2.5.apk"
+    output = destination / "Cinevo-Test-v0.2.6.apk"
     shutil.copy2(apk, output)
     record = dict(package=EXPECTED_PACKAGE, versionCode=int(EXPECTED_CODE), versionName=EXPECTED_VERSION,
                   certificateSha256=EXPECTED_CERT, apkSha256=hashlib.sha256(output.read_bytes()).hexdigest())

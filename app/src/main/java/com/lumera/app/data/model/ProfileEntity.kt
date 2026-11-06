@@ -70,5 +70,7 @@ data class ProfileEntity(
 
     // TMDB integration
     val tmdbEnabled: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "'adult'")
+    val ageGroup: String = "adult", // Existing profiles retain their current access until edited.
     val tmdbLanguage: String = ""                    // ISO-639-1, empty = device locale
 )

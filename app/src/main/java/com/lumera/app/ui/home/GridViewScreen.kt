@@ -1,5 +1,7 @@
 package com.lumera.app.ui.home
 
+import androidx.hilt.navigation.compose.hiltViewModel
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -101,8 +103,13 @@ fun GridViewScreen(
     initialScrollIndex: Int = 0,
     initialScrollOffset: Int = 0,
     onScrollPositionChange: (Int, Int) -> Unit = { _, _ -> },
-    watchedIds: Set<String> = emptySet()
+    watchedIds: Set<String> = emptySet(),
+    policy: com.lumera.app.ui.parental.ContentPolicyViewModel = hiltViewModel()
 ) {
+    val unfilteredItems = items
+    val items by androidx.compose.runtime.produceState<List<MetaItem>>(emptyList(), unfilteredItems, policy.sessionKey()) {
+        value = policy.filter(unfilteredItems)
+    }
     val context = LocalContext.current
     val density = LocalDensity.current
     

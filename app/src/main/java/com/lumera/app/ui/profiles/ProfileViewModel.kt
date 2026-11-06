@@ -23,7 +23,8 @@ class ProfileViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val traktAuthManager: TraktAuthManager,
     private val trackSelections: PlaybackTrackSelectionStore,
-    private val sourceSelections: SourceSelectionStore
+    private val sourceSelections: SourceSelectionStore,
+    private val parentPin: com.lumera.app.data.parental.ParentPin
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<ProfileEntity>>(emptyList())
@@ -43,6 +44,7 @@ class ProfileViewModel @Inject constructor(
     fun clearOperationError() { _operationError.value = null }
 
     // WIZARD DATA
+    var tempAgeGroup: String? = null
     var tempName = ""
     var tempAvatarRef = "avatar_1"
     var tempThemeId = "void"  // Changed from tempColor
@@ -65,7 +67,14 @@ class ProfileViewModel @Inject constructor(
     // --- WIZARD ACTIONS ---
 
     fun startWizard() {
+        viewModelScope.launch {
+            if (parentPin.authorize("Create a profile")) startWizardAuthorized()
+        }
+    }
+
+    private fun startWizardAuthorized() {
         editingProfileId = null
+        tempAgeGroup = null
         tempName = ""
         tempAvatarRef = "avatar_1"
         tempThemeId = "void"
@@ -73,7 +82,14 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun startEditWizard(profile: ProfileEntity) {
+        viewModelScope.launch {
+            if (parentPin.authorize("Edit profile and age group")) startEditWizardAuthorized(profile)
+        }
+    }
+
+    private fun startEditWizardAuthorized(profile: ProfileEntity) {
         editingProfileId = profile.id
+        tempAgeGroup = profile.ageGroup
         tempName = profile.name
         tempAvatarRef = profile.avatarRef
         tempThemeId = profile.themeId
@@ -90,9 +106,15 @@ class ProfileViewModel @Inject constructor(
         _wizardStep.value = 2
     }
 
+    fun setWizardAgeGroup(ageGroup: String) {
+        require(ageGroup in listOf("under12", "12to14", "15to17", "adult"))
+        tempAgeGroup = ageGroup
+        _wizardStep.value = 3
+    }
+
     fun setWizardAvatar(avatarKey: String) {
         tempAvatarRef = avatarKey
-        _wizardStep.value = 3
+        _wizardStep.value = 4
     }
 
     fun setWizardTheme(themeId: String) {
@@ -101,9 +123,11 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun finishWizard() {
+        val selectedAgeGroup = tempAgeGroup ?: return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             if (editingProfileId != null) {
                 val updatedProfile = _profiles.value.find { it.id == editingProfileId }?.copy(
+                    ageGroup = selectedAgeGroup,
                     name = tempName,
                     avatarRef = tempAvatarRef,
                     themeId = tempThemeId
@@ -112,6 +136,7 @@ class ProfileViewModel @Inject constructor(
             } else {
                 val profileId = dao.insertProfile(
                     ProfileEntity(
+                        ageGroup = selectedAgeGroup,
                         name = tempName,
                         avatarRef = tempAvatarRef,
                         themeId = tempThemeId,
@@ -183,6 +208,7 @@ class ProfileViewModel @Inject constructor(
 
     fun deleteProfile(id: Int) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            if (!parentPin.authorize("Delete profile")) return@launch
             try {
                 profileConfigurationManager.deleteProfileState(id)
                 traktAuthManager.clearTokensForProfile(id)

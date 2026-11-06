@@ -76,11 +76,11 @@ fun PlayerScreen(
     torrentProgress: TorrentProgress? = null,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
-    val profileSession = remember(movieId) { viewModel.captureSession() }
+    val profileSession = viewModel.captureSession()
     val context = LocalContext.current
     val hostView = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val runtime = remember(movieId, backendType, playbackSettings) {
+    val runtime = remember(movieId, backendType, playbackSettings, profileSession) {
         PlayerBackendFactory.create(context, backendType, playbackSettings)
     }
     val playbackController = runtime.playbackController
@@ -186,7 +186,13 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(movieId, videoUrl, backendType) {
+    var accessDenied by remember(movieId, profileSession) { mutableStateOf(false) }
+    LaunchedEffect(movieId, videoUrl, backendType, profileSession) {
+        if (!viewModel.allowed(mediaType, movieId)) {
+            playbackController.release()
+            accessDenied = true
+            return@LaunchedEffect
+        }
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
         val resumePosition = viewModel.getResumePosition(movieId, profileSession)
         playbackController.load(
@@ -256,6 +262,13 @@ fun PlayerScreen(
         )
     }
 
+    if (accessDenied) {
+        androidx.activity.compose.BackHandler { onBack(PlayerSessionResult(0L, null, false, null, null, null, profileId = profileSession?.profileId)) }
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.material3.Text("Playback blocked: no permitted UK age rating. Press Back.")
+        }
+        return
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         BasePlayerScaffold(
             playbackController = playbackController,
