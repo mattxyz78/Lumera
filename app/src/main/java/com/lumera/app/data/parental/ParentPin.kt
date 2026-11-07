@@ -35,6 +35,11 @@ class ParentPin @Inject constructor(@ApplicationContext context: Context) {
     val ratingApiKey get() = prefs.getString("rating_api_key", null)?.takeIf { it.isNotBlank() } ?: com.lumera.app.BuildConfig.TMDB_API_KEY
     val configured get() = prefs.contains("hash") && prefs.contains("salt")
 
+    // Call only after the profile wizard's optional-lock authorization check.
+    internal fun saveRatingApiKey(key: String): Boolean = prefs.edit()
+        .putString("rating_api_key", key.trim())
+        .putInt("rating_key_version", ratingKeyVersion + 1).commit()
+
     suspend fun authorize(reason: String): Boolean = mutex.withLock {
         _error.value = null
         val pending = CompletableDeferred<Boolean>()
@@ -67,7 +72,9 @@ class ParentPin @Inject constructor(@ApplicationContext context: Context) {
         } } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { false }
         if (accepted && waiting === request && !request.isCompleted) {
-            if (ratingKey.isNotBlank()) prefs.edit().putString("rating_api_key", ratingKey.trim()).putInt("rating_key_version", ratingKeyVersion + 1).commit()
+            if (ratingKey.isNotBlank() && !saveRatingApiKey(ratingKey)) {
+                _error.value = "Unable to save the ratings key. Try again."; return@withLock
+            }
             failures = 0; request.complete(true)
         }
         else { failures++; if (failures >= 5) { blockedUntil = SystemClock.elapsedRealtime() + 30_000L; failures = 0 }; _error.value = "Incorrect PIN or unable to save. Try again." }

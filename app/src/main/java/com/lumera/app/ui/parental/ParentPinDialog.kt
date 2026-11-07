@@ -32,7 +32,7 @@ fun ParentPinDialog(controller: ParentPin) {
     AlertDialog(onDismissRequest = { if (!busy) controller.cancel() },
         title = { Text(if (setup) "Set up parent PIN" else "Parent PIN required") },
         text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (setup) "An adult must set a PIN before profiles can be managed. Keep it private." else reason)
+            Text(if (setup) "Choose a parent PIN for profiles you lock and for profile changes while a lock is in use. Keep it private." else reason)
             OutlinedTextField(pin, { if (it.length <= 8) pin = it }, modifier = Modifier.focusRequester(pinFocus), label = { Text("PIN") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
             if (setup) OutlinedTextField(confirm, { if (it.length <= 8) confirm = it }, label = { Text("Confirm PIN") }, singleLine = true,

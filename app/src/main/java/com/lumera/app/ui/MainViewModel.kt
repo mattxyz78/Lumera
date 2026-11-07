@@ -55,8 +55,8 @@ class MainViewModel @Inject constructor(
             transitionMutex.withLock {
                 try {
                     val target = dao.getProfileById(id) ?: error("This profile no longer exists.")
-                    if (!parentPin.configured || !com.lumera.app.data.parental.AgeGroupPolicy.restricted(target.ageGroup)) {
-                        check(parentPin.authorize("Open adult profile")) { "Profile access cancelled." }
+                    if (target.pinProtected) {
+                        check(parentPin.authorize("Open locked profile")) { "Profile access cancelled." }
                     }
                     connectionJob?.cancelAndJoin()
                     traktSyncJob?.cancelAndJoin()

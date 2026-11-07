@@ -118,7 +118,9 @@ fun ProfileScreen(
                     )
                     2 -> WizardAgeGroupStep(
                         selected = viewModel.tempAgeGroup,
-                        onSelect = { viewModel.setWizardAgeGroup(it) },
+                        pinProtected = viewModel.tempPinProtected,
+                        hasRatingKey = viewModel.hasRatingKey,
+                        onContinue = { age, locked, ratingKey -> viewModel.setWizardAgeGroup(age, locked, ratingKey) },
                         onBack = { viewModel.goBackStep() }
                     )
                     3 -> WizardAvatarStep(

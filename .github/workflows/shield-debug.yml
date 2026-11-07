@@ -82,6 +82,6 @@ jobs:
         with:
           name: cinevo-shield-debug
           path: |
-            Lumera/app/build/cinevo/Cinevo-Test-v0.2.6.apk
+            Lumera/app/build/cinevo/Cinevo-Test-v0.2.7.apk
             Lumera/app/build/cinevo/verification.json
           if-no-files-found: error

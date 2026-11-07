@@ -11,6 +11,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.lumera.app.data.trakt.TraktAuthManager
 import com.lumera.app.data.player.PlaybackTrackSelectionStore
@@ -45,11 +48,18 @@ class ProfileViewModel @Inject constructor(
 
     // WIZARD DATA
     var tempAgeGroup: String? = null
+    var tempPinProtected = false
+    private var tempRatingKey = ""
+    val hasRatingKey get() = parentPin.ratingApiKey.isNotBlank()
     var tempName = ""
     var tempAvatarRef = "avatar_1"
     var tempThemeId = "void"  // Changed from tempColor
 
     private var editingProfileId: Int? = null
+    private var wizardAuthorized = false
+    private var wizardSaveJob: Job? = null
+
+    private suspend fun profileChangesRequirePin() = dao.getProfiles().first().any { it.pinProtected }
 
     init {
         loadProfiles()
@@ -68,13 +78,18 @@ class ProfileViewModel @Inject constructor(
 
     fun startWizard() {
         viewModelScope.launch {
-            if (parentPin.authorize("Create a profile")) startWizardAuthorized()
+            val needsPin = profileChangesRequirePin()
+            if (needsPin && !parentPin.authorize("Create a profile")) return@launch
+            wizardAuthorized = needsPin
+            startWizardAuthorized()
         }
     }
 
     private fun startWizardAuthorized() {
         editingProfileId = null
         tempAgeGroup = null
+        tempPinProtected = false
+        tempRatingKey = ""
         tempName = ""
         tempAvatarRef = "avatar_1"
         tempThemeId = "void"
@@ -83,13 +98,18 @@ class ProfileViewModel @Inject constructor(
 
     fun startEditWizard(profile: ProfileEntity) {
         viewModelScope.launch {
-            if (parentPin.authorize("Edit profile and age group")) startEditWizardAuthorized(profile)
+            val needsPin = profileChangesRequirePin()
+            if (needsPin && !parentPin.authorize("Edit profile and age group")) return@launch
+            wizardAuthorized = needsPin
+            startEditWizardAuthorized(profile)
         }
     }
 
     private fun startEditWizardAuthorized(profile: ProfileEntity) {
         editingProfileId = profile.id
         tempAgeGroup = profile.ageGroup
+        tempPinProtected = profile.pinProtected
+        tempRatingKey = ""
         tempName = profile.name
         tempAvatarRef = profile.avatarRef
         tempThemeId = profile.themeId
@@ -97,6 +117,9 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun cancelWizard() {
+        wizardSaveJob?.cancel()
+        wizardAuthorized = false
+        tempRatingKey = ""
         _wizardStep.value = 0
         editingProfileId = null
     }
@@ -106,9 +129,11 @@ class ProfileViewModel @Inject constructor(
         _wizardStep.value = 2
     }
 
-    fun setWizardAgeGroup(ageGroup: String) {
+    fun setWizardAgeGroup(ageGroup: String, pinProtected: Boolean = tempPinProtected, ratingKey: String = tempRatingKey) {
         require(ageGroup in listOf("under12", "12to14", "15to17", "adult"))
         tempAgeGroup = ageGroup
+        tempPinProtected = pinProtected
+        tempRatingKey = ratingKey
         _wizardStep.value = 3
     }
 
@@ -124,33 +149,53 @@ class ProfileViewModel @Inject constructor(
 
     private fun finishWizard() {
         val selectedAgeGroup = tempAgeGroup ?: return
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            if (editingProfileId != null) {
-                val updatedProfile = _profiles.value.find { it.id == editingProfileId }?.copy(
-                    ageGroup = selectedAgeGroup,
-                    name = tempName,
-                    avatarRef = tempAvatarRef,
-                    themeId = tempThemeId
-                )
-                if (updatedProfile != null) dao.updateProfile(updatedProfile)
-            } else {
-                val profileId = dao.insertProfile(
-                    ProfileEntity(
-                        ageGroup = selectedAgeGroup,
-                        name = tempName,
-                        avatarRef = tempAvatarRef,
-                        themeId = tempThemeId,
-                        navPosition = "left",
-                        homeTabLayout = "cinematic",
-                        roundCorners = true
-                    )
-                ).toInt()
-                if (profileId > 0) {
-                    profileConfigurationManager.markPendingSetup(profileId)
-                }
+        if (wizardSaveJob?.isActive == true) return
+        val editingId = editingProfileId
+        val pinProtected = tempPinProtected
+        val name = tempName
+        val avatar = tempAvatarRef
+        val theme = tempThemeId
+        val ratingKey = tempRatingKey
+        wizardSaveJob = viewModelScope.launch {
+            // Set or verify the parent PIN before saving the first optional lock.
+            if ((pinProtected || profileChangesRequirePin()) && !wizardAuthorized &&
+                !parentPin.authorize("Save profile PIN protection")) return@launch
+            if (ratingKey.isNotBlank() && !parentPin.saveRatingApiKey(ratingKey)) {
+                _operationError.value = "Unable to save the ratings key. Please try again."
+                return@launch
             }
-            _wizardStep.value = 0
-            editingProfileId = null
+            withContext(NonCancellable) {
+                if (editingId != null) {
+                    val updatedProfile = dao.getProfileById(editingId)?.copy(
+                        ageGroup = selectedAgeGroup,
+                        pinProtected = pinProtected,
+                        name = name,
+                        avatarRef = avatar,
+                        themeId = theme
+                    )
+                    if (updatedProfile != null) dao.updateProfile(updatedProfile)
+                } else {
+                    val profileId = dao.insertProfile(
+                        ProfileEntity(
+                            ageGroup = selectedAgeGroup,
+                            pinProtected = pinProtected,
+                            name = name,
+                            avatarRef = avatar,
+                            themeId = theme,
+                            navPosition = "left",
+                            homeTabLayout = "cinematic",
+                            roundCorners = true
+                        )
+                    ).toInt()
+                    if (profileId > 0) {
+                        profileConfigurationManager.markPendingSetup(profileId)
+                    }
+                }
+                _wizardStep.value = 0
+                editingProfileId = null
+                wizardAuthorized = false
+                tempRatingKey = ""
+            }
         }
     }
 
@@ -208,7 +253,7 @@ class ProfileViewModel @Inject constructor(
 
     fun deleteProfile(id: Int) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            if (!parentPin.authorize("Delete profile")) return@launch
+            if (profileChangesRequirePin() && !parentPin.authorize("Delete profile")) return@launch
             try {
                 profileConfigurationManager.deleteProfileState(id)
                 traktAuthManager.clearTokensForProfile(id)

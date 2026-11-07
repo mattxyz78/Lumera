@@ -72,5 +72,7 @@ data class ProfileEntity(
     val tmdbEnabled: Boolean = false,
     @androidx.room.ColumnInfo(defaultValue = "'adult'")
     val ageGroup: String = "adult", // Existing profiles retain their current access until edited.
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val pinProtected: Boolean = false,
     val tmdbLanguage: String = ""                    // ISO-639-1, empty = device locale
 )

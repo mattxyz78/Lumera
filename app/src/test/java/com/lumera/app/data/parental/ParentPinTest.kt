@@ -32,6 +32,13 @@ class ParentPinTest {
         assertTrue(pin.configured)
         assertFalse(context.getSharedPreferences("cinevo_parent_pin", 0).all.values.any { it == "5291" })
     }
+    @Test fun ratingsSetupDoesNotCreateOrEnableAPin() {
+        assertFalse(pin.configured)
+        assertTrue(pin.saveRatingApiKey("ratings-key"))
+        assertEquals("ratings-key", pin.ratingApiKey)
+        assertEquals(1, pin.ratingKeyVersion)
+        assertFalse(pin.configured)
+    }
     @Test fun wrongPinAndCancelledPromptsDoNotAuthorize() = runTest {
         val setup = async { pin.authorize("Setup") }; runCurrent(); pin.submit("5291", "5291"); assertTrue(setup.await())
         val result = async { pin.authorize("Adult profile") }; runCurrent()
